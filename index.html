@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JB Holding — Panel de Control</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d0d0f;
+  --surface: #16161a;
+  --surface2: #1e1e24;
+  --surface3: #26262e;
+  --border: #2a2a35;
+  --border2: #353545;
+  --gold: #f0b429;
+  --gold-dim: #a07818;
+  --gold-bg: rgba(240,180,41,0.08);
+  --text: #e8e8f0;
+  --text2: #9090a8;
+  --text3: #5a5a72;
+  --green: #22c55e;
+  --green-bg: rgba(34,197,94,0.1);
+  --blue: #3b82f6;
+  --blue-bg: rgba(59,130,246,0.1);
+  --amber: #f59e0b;
+  --amber-bg: rgba(245,158,11,0.1);
+  --red: #ef4444;
+  --red-bg: rgba(239,68,68,0.1);
+  --purple: #a855f7;
+  --purple-bg: rgba(168,85,247,0.1);
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ── LOGIN ── */
+#login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+
+#login-screen::before {
+  content: '';
+  position: absolute;
+  width: 600px; height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(240,180,41,0.06) 0%, transparent 70%);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 48px;
+  width: 400px;
+  position: relative;
+  z-index: 1;
+}
+
+.login-logo {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.login-logo-mark {
+  width: 52px; height: 52px;
+  border-radius: 12px;
+  background: var(--gold-bg);
+  border: 1px solid var(--gold-dim);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 700; color: var(--gold);
+  margin: 0 auto 16px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.login-title {
+  font-size: 18px; font-weight: 600; color: var(--text);
+  margin-bottom: 4px;
+}
+
+.login-sub {
+  font-size: 12px; color: var(--text2);
+}
+
+.form-group { margin-bottom: 16px; }
+
+.form-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+
+.form-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.form-input:focus { border-color: var(--gold-dim); }
+.form-input::placeholder { color: var(--text3); }
+
+.btn-login {
+  width: 100%;
+  background: var(--gold);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: opacity 0.2s;
+  font-family: 'Inter', sans-serif;
+}
+.btn-login:hover { opacity: 0.9; }
+
+.login-hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 20px;
+}
+
+.login-error {
+  background: var(--red-bg);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--red);
+  margin-bottom: 16px;
+  display: none;
+}
+
+/* ── APP SHELL ── */
+#app { display: none; height: 100vh; flex-direction: column; }
+#app.visible { display: flex; }
+
+/* TOPBAR */
+.topbar {
+  height: 56px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 24px;
+  flex-shrink: 0;
+  z-index: 50;
+}
+
+.topbar-logo {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gold);
+  letter-spacing: 0.05em;
+  margin-right: 8px;
+}
+
+.topbar-sep { width: 1px; height: 20px; background: var(--border); }
+
+.topbar-nav { display: flex; gap: 4px; flex: 1; }
+
+.nav-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text2);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: all 0.15s;
+  font-family: 'Inter', sans-serif;
+}
+.nav-btn:hover { color: var(--text); background: var(--surface2); }
+.nav-btn.active { color: var(--gold); background: var(--gold-bg); }
+
+.topbar-right {
+  display: flex; align-items: center; gap: 12px; margin-left: auto;
+}
+
+.user-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 20px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.user-chip:hover { border-color: var(--border2); }
+
+.user-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--gold-bg);
+  border: 1px solid var(--gold-dim);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: var(--gold);
+}
+
+.user-name { font-size: 12px; font-weight: 500; color: var(--text); }
+.user-role { font-size: 10px; color: var(--text3); }
+
+/* LAYOUT */
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 16px 0;
+}
+
+.sidebar-section { margin-bottom: 24px; }
+
+.sidebar-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: 0 16px;
+  margin-bottom: 6px;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 500;
+  border-left: 2px solid transparent;
+  transition: all 0.15s;
+}
+.sidebar-item:hover { color: var(--text); background: var(--surface2); }
+.sidebar-item.active { color: var(--gold); border-left-color: var(--gold); background: var(--gold-bg); }
+
+.sidebar-icon { font-size: 14px; width: 18px; text-align: center; }
+
+.sidebar-badge {
+  margin-left: auto;
+  font-size: 10px;
+  background: var(--gold-bg);
+  color: var(--gold);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+/* MAIN CONTENT */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px;
+  background: var(--bg);
+}
+
+/* PAGE HEADER */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.page-title { font-size: 20px; font-weight: 600; color: var(--text); }
+.page-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+.header-actions { display: flex; gap: 8px; }
+
+.btn {
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.15s;
+}
+.btn-secondary {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+.btn-secondary:hover { border-color: var(--border2); color: var(--text); }
+.btn-primary-sm {
+  background: var(--gold);
+  color: #000;
+  font-weight: 600;
+}
+.btn-primary-sm:hover { opacity: 0.9; }
+
+/* KPI STRIP */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.kpi-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 10px;
+}
+
+.kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.kpi-value span { color: var(--gold); }
+
+.kpi-delta {
+  font-size: 11px;
+  color: var(--text3);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.kpi-delta.up { color: var(--green); }
+.kpi-delta.warn { color: var(--amber); }
+
+/* VENTURES GRID */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.section-title-sm {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ventures-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.venture-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.venture-card:hover {
+  border-color: var(--border2);
+  transform: translateY(-1px);
+}
+.venture-card.active-card { border-color: var(--gold-dim); }
+
+.venture-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.venture-emoji { font-size: 20px; }
+
+.status-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.pill-active { background: var(--green-bg); color: var(--green); }
+.pill-building { background: var(--amber-bg); color: var(--amber); }
+.pill-planned { background: var(--surface3); color: var(--text3); }
+
+.venture-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.venture-entity {
+  font-size: 10px;
+  color: var(--text3);
+  margin-bottom: 12px;
+}
+
+/* PROGRESS BAR */
+.progress-bar {
+  height: 3px;
+  background: var(--surface3);
+  border-radius: 2px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--gold);
+  transition: width 0.6s ease;
+}
+.progress-fill.green { background: var(--green); }
+.progress-fill.blue { background: var(--blue); }
+.progress-fill.purple { background: var(--purple); }
+
+.venture-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.venture-tasks {
+  font-size: 10px;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* BOTTOM GRID */
+.bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.panel-link {
+  font-size: 11px;
+  color: var(--gold);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.panel-body { padding: 8px 0; }
+
+/* TASKS */
+.task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.task-item:last-child { border-bottom: none; }
+.task-item:hover { background: var(--surface2); }
+
+.task-check {
+  width: 16px; height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border2);
+  flex-shrink: 0;
+  margin-top: 1px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.task-check.done {
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+  font-size: 9px;
+}
+.task-check:hover:not(.done) { border-color: var(--gold); }
+
+.task-content { flex: 1; }
+.task-title { font-size: 12px; color: var(--text); margin-bottom: 3px; }
+.task-title.done-text { text-decoration: line-through; color: var(--text3); }
+.task-meta { font-size: 10px; color: var(--text3); display: flex; gap: 8px; }
+
+.task-venture-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface3);
+  color: var(--text2);
+}
+
+/* ACTIVITY */
+.activity-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.activity-item:last-child { border-bottom: none; }
+
+.activity-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.activity-text { font-size: 12px; color: var(--text2); line-height: 1.5; }
+.activity-text strong { color: var(--text); font-weight: 500; }
+.activity-time { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+/* TEAM CHIPS */
+.team-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.team-row:last-child { border-bottom: none; }
+
+.team-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; flex-shrink: 0;
+}
+
+.team-info { flex: 1; }
+.team-name { font-size: 12px; font-weight: 500; color: var(--text); }
+.team-role { font-size: 10px; color: var(--text3); }
+
+.team-status {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+/* HIDDEN PAGES */
+.page { display: none; }
+.page.active { display: block; }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* TOOLTIP */
+[data-tip] { position: relative; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ LOGIN ══════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-mark">JB</div>
+      <div class="login-title">JB Holding</div>
+      <div class="login-sub">Panel de control interno</div>
+    </div>
+    <div class="login-error" id="login-error">Credenciales incorrectas. Intenta de nuevo.</div>
+    <div class="form-group">
+      <label class="form-label">Usuario</label>
+      <input type="text" class="form-input" id="inp-user" placeholder="tu@email.com" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Contraseña</label>
+      <input type="password" class="form-input" id="inp-pass" placeholder="••••••••">
+    </div>
+    <button class="btn-login" id="btn-login">Ingresar al panel</button>
+    <div class="login-hint">Demo: cualquier usuario / contraseña</div>
+  </div>
+</div>
+
+<!-- ══════════════ APP ══════════════ -->
+<div id="app">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-logo">JB /</div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-nav">
+      <button class="nav-btn active" onclick="setPage('dashboard')">Dashboard</button>
+      <button class="nav-btn" onclick="setPage('ventures')">Ventures</button>
+      <button class="nav-btn" onclick="setPage('tareas')">Tareas</button>
+      <button class="nav-btn" onclick="setPage('equipo')">Equipo</button>
+    </div>
+    <div class="topbar-right">
+      <div class="user-chip" id="user-chip">
+        <div class="user-avatar" id="top-avatar">JB</div>
+        <div>
+          <div class="user-name" id="top-name">Jordan Blancas</div>
+          <div class="user-role" id="top-role">Fundador</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-body">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Principal</div>
+        <div class="sidebar-item active" onclick="setPage('dashboard')">
+          <span class="sidebar-icon">⬡</span> Dashboard
+        </div>
+        <div class="sidebar-item" onclick="setPage('ventures')">
+          <span class="sidebar-icon">◈</span> Ventures
+          <span class="sidebar-badge">8</span>
+        </div>
+        <div class="sidebar-item" onclick="setPage('tareas')">
+          <span class="sidebar-icon">✓</span> Tareas
+          <span class="sidebar-badge">12</span>
+        </div>
+        <div class="sidebar-item" onclick="setPage('equipo')">
+          <span class="sidebar-icon">◎</span> Equipo
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">Ventures</div>
+        <div class="sidebar-item" onclick="setPage('dashboard')"><span class="sidebar-icon">⚡</span> Fitbase</div>
+        <div class="sidebar-item" onclick="setPage('dashboard')"><span class="sidebar-icon">🔌</span> Vatio</div>
+        <div class="sidebar-item" onclick="setPage('dashboard')"><span class="sidebar-icon">🎬</span> Élite Cultural</div>
+        <div class="sidebar-item" onclick="setPage('dashboard')"><span class="sidebar-icon">🧠</span> Polímatas</div>
+        <div class="sidebar-item" onclick="setPage('dashboard')"><span class="sidebar-icon">📡</span> Energética</div>
+        <div class="sidebar-item" onclick="setPage('dashboard')"><span class="sidebar-icon">🔭</span> C. Poética</div>
+        <div class="sidebar-item" onclick="setPage('dashboard')"><span class="sidebar-icon">🌐</span> iWatt</div>
+        <div class="sidebar-item" onclick="setPage('dashboard')"><span class="sidebar-icon">👤</span> Marca</div>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+
+      <!-- ── PAGE: DASHBOARD ── -->
+      <div class="page active" id="page-dashboard">
+
+        <div class="page-header">
+          <div>
+            <div class="page-title">Dashboard del Holding</div>
+            <div class="page-sub" id="dash-date">Jueves, 21 de mayo de 2025</div>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-secondary">Exportar</button>
+            <button class="btn btn-primary-sm">+ Nueva tarea</button>
+          </div>
+        </div>
+
+        <!-- KPIs -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">Ventures activos</div>
+            <div class="kpi-value">8<span>/8</span></div>
+            <div class="kpi-delta up">↑ 2 en construcción activa</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Tareas pendientes</div>
+            <div class="kpi-value">12</div>
+            <div class="kpi-delta warn">⚠ 3 vencen esta semana</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Equipo</div>
+            <div class="kpi-value">2<span>/3</span></div>
+            <div class="kpi-delta">1 posición por cubrir</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Avance global</div>
+            <div class="kpi-value">34<span>%</span></div>
+            <div class="kpi-delta up">↑ +8% este mes</div>
+          </div>
+        </div>
+
+        <!-- VENTURES -->
+        <div class="section-header">
+          <div class="section-title-sm">Estado de Ventures</div>
+          <span style="font-size:11px;color:var(--text3)">Haz clic en cualquiera para detalles</span>
+        </div>
+
+        <div class="ventures-grid">
+
+          <div class="venture-card" onclick="alert('Fitbase — Módulo en construcción')">
+            <div class="venture-card-top">
+              <span class="venture-emoji">⚡</span>
+              <span class="status-pill pill-building">Building</span>
+            </div>
+            <div class="venture-name">Fitbase</div>
+            <div class="venture-entity">Fitbase Club S.A.C.</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:45%"></div></div>
+            <div class="venture-meta">
+              <span>45% completado</span>
+              <span class="venture-tasks">✓ 4 tareas</span>
+            </div>
+          </div>
+
+          <div class="venture-card" onclick="alert('Vatio — Módulo en construcción')">
+            <div class="venture-card-top">
+              <span class="venture-emoji">🔌</span>
+              <span class="status-pill pill-active">Activo</span>
+            </div>
+            <div class="venture-name">Vatio</div>
+            <div class="venture-entity">Vatio S.A.C.</div>
+            <div class="progress-bar"><div class="progress-fill green" style="width:70%"></div></div>
+            <div class="venture-meta">
+              <span>70% completado</span>
+              <span class="venture-tasks">✓ 2 tareas</span>
+            </div>
+          </div>
+
+          <div class="venture-card" onclick="alert('Élite Cultural — Módulo en construcción')">
+            <div class="venture-card-top">
+              <span class="venture-emoji">🎬</span>
+              <span class="status-pill pill-building">Building</span>
+            </div>
+            <div class="venture-name">Élite Cultural</div>
+            <div class="venture-entity">Élite Cultural Perú</div>
+            <div class="progress-bar"><div class="progress-fill blue" style="width:30%"></div></div>
+            <div class="venture-meta">
+              <span>30% completado</span>
+              <span class="venture-tasks">✓ 1 tarea</span>
+            </div>
+          </div>
+
+          <div class="venture-card" onclick="alert('Polímatas — Módulo en construcción')">
+            <div class="venture-card-top">
+              <span class="venture-emoji">🧠</span>
+              <span class="status-pill pill-building">Building</span>
+            </div>
+            <div class="venture-name">Polímatas Club</div>
+            <div class="venture-entity">Virtual Flow Tech LLC</div>
+            <div class="progress-bar"><div class="progress-fill purple" style="width:25%"></div></div>
+            <div class="venture-meta">
+              <span>25% completado</span>
+              <span class="venture-tasks">✓ 3 tareas</span>
+            </div>
+          </div>
+
+          <div class="venture-card" onclick="alert('Energética Labs — Módulo en construcción')">
+            <div class="venture-card-top">
+              <span class="venture-emoji">📡</span>
+              <span class="status-pill pill-active">Activo</span>
+            </div>
+            <div class="venture-name">Energética Labs</div>
+            <div class="venture-entity">Proyecto editorial</div>
+            <div class="progress-bar"><div class="progress-fill green" style="width:60%"></div></div>
+            <div class="venture-meta">
+              <span>60% completado</span>
+              <span class="venture-tasks">✓ 1 tarea</span>
+            </div>
+          </div>
+
+          <div class="venture-card" onclick="alert('Ciencia Poética — Módulo en construcción')">
+            <div class="venture-card-top">
+              <span class="venture-emoji">🔭</span>
+              <span class="status-pill pill-building">Building</span>
+            </div>
+            <div class="venture-name">Ciencia Poética</div>
+            <div class="venture-entity">Proyecto educativo</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <div class="venture-meta">
+              <span>20% completado</span>
+              <span class="venture-tasks">✓ 0 tareas</span>
+            </div>
+          </div>
+
+          <div class="venture-card" onclick="alert('iWatt Club — Módulo en construcción')">
+            <div class="venture-card-top">
+              <span class="venture-emoji">🌐</span>
+              <span class="status-pill pill-planned">Planeado</span>
+            </div>
+            <div class="venture-name">iWatt Club</div>
+            <div class="venture-entity">Virtual Power Plant</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:10%"></div></div>
+            <div class="venture-meta">
+              <span>10% completado</span>
+              <span class="venture-tasks">✓ 0 tareas</span>
+            </div>
+          </div>
+
+          <div class="venture-card" onclick="alert('Marca Personal — Módulo en construcción')">
+            <div class="venture-card-top">
+              <span class="venture-emoji">👤</span>
+              <span class="status-pill pill-building">Building</span>
+            </div>
+            <div class="venture-name">Marca Personal</div>
+            <div class="venture-entity">Jordan Blancas</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:35%"></div></div>
+            <div class="venture-meta">
+              <span>35% completado</span>
+              <span class="venture-tasks">✓ 1 tarea</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- BOTTOM PANELS -->
+        <div class="bottom-grid">
+
+          <!-- TAREAS -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Tareas prioritarias</div>
+              <a class="panel-link" onclick="setPage('tareas')">Ver todas →</a>
+            </div>
+            <div class="panel-body">
+              <div class="task-item">
+                <div class="task-check" onclick="toggleTask(this)"></div>
+                <div class="task-content">
+                  <div class="task-title">Subir index.html a GitHub</div>
+                  <div class="task-meta">
+                    <span>Hoy</span>
+                    <span class="task-venture-tag">Holding</span>
+                  </div>
+                </div>
+              </div>
+              <div class="task-item">
+                <div class="task-check" onclick="toggleTask(this)"></div>
+                <div class="task-content">
+                  <div class="task-title">Conectar repo a Vercel</div>
+                  <div class="task-meta">
+                    <span>Hoy</span>
+                    <span class="task-venture-tag">Holding</span>
+                  </div>
+                </div>
+              </div>
+              <div class="task-item">
+                <div class="task-check" onclick="toggleTask(this)"></div>
+                <div class="task-content">
+                  <div class="task-title">Diseñar arquitectura Supabase de Fitbase</div>
+                  <div class="task-meta">
+                    <span>Esta semana</span>
+                    <span class="task-venture-tag">Fitbase</span>
+                  </div>
+                </div>
+              </div>
+              <div class="task-item">
+                <div class="task-check" onclick="toggleTask(this)"></div>
+                <div class="task-content">
+                  <div class="task-title">Publicar primer artículo Energética Labs</div>
+                  <div class="task-meta">
+                    <span>Esta semana</span>
+                    <span class="task-venture-tag">Energética</span>
+                  </div>
+                </div>
+              </div>
+              <div class="task-item">
+                <div class="task-check done" onclick="toggleTask(this)">✓</div>
+                <div class="task-content">
+                  <div class="task-title done-text">Crear repo jordan-holding en GitHub</div>
+                  <div class="task-meta">
+                    <span>Completado hoy</span>
+                    <span class="task-venture-tag">Holding</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ACTIVIDAD -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Actividad reciente</div>
+            </div>
+            <div class="panel-body">
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--green)"></div>
+                <div>
+                  <div class="activity-text"><strong>Jordan</strong> creó el repo jordan-holding en GitHub</div>
+                  <div class="activity-time">Hace 10 min</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--gold)"></div>
+                <div>
+                  <div class="activity-text"><strong>Sistema</strong> generó la landing del holding v1.0</div>
+                  <div class="activity-time">Hace 30 min</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--blue)"></div>
+                <div>
+                  <div class="activity-text"><strong>Jordan</strong> definió el stack tecnológico del holding</div>
+                  <div class="activity-time">Hoy</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--purple)"></div>
+                <div>
+                  <div class="activity-text"><strong>Jordan</strong> inició sesión de planificación del holding</div>
+                  <div class="activity-time">Hoy</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--text3)"></div>
+                <div>
+                  <div class="activity-text">Panel de control inicializado</div>
+                  <div class="activity-time">21 may 2025</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /dashboard -->
+
+      <!-- ── PAGE: VENTURES ── -->
+      <div class="page" id="page-ventures">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Ventures</div>
+            <div class="page-sub">8 iniciativas · 3 entidades legales</div>
+          </div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:40px;text-align:center;color:var(--text3)">
+          <div style="font-size:32px;margin-bottom:12px">◈</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:8px">Módulo de Ventures</div>
+          <div style="font-size:12px">Vista detallada por venture — en construcción</div>
+        </div>
+      </div>
+
+      <!-- ── PAGE: TAREAS ── -->
+      <div class="page" id="page-tareas">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Tareas</div>
+            <div class="page-sub">12 pendientes · 3 vencen esta semana</div>
+          </div>
+          <button class="btn btn-primary-sm">+ Nueva tarea</button>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:40px;text-align:center;color:var(--text3)">
+          <div style="font-size:32px;margin-bottom:12px">✓</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:8px">Módulo de Tareas</div>
+          <div style="font-size:12px">Gestión completa de tareas por venture — en construcción</div>
+        </div>
+      </div>
+
+      <!-- ── PAGE: EQUIPO ── -->
+      <div class="page" id="page-equipo">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Equipo</div>
+            <div class="page-sub">2 miembros activos · 1 posición abierta</div>
+          </div>
+          <button class="btn btn-primary-sm">+ Agregar miembro</button>
+        </div>
+        <div class="panel" style="max-width:600px">
+          <div class="panel-header"><div class="panel-title">Miembros del equipo</div></div>
+          <div class="panel-body">
+            <div class="team-row">
+              <div class="team-avatar" style="background:var(--gold-bg);color:var(--gold)">JB</div>
+              <div class="team-info">
+                <div class="team-name">Jordan Blancas</div>
+                <div class="team-role">Fundador · Ing. Mecánico Electricista</div>
+              </div>
+              <span class="team-status" style="background:var(--green-bg);color:var(--green)">Activo</span>
+            </div>
+            <div class="team-row">
+              <div class="team-avatar" style="background:var(--blue-bg);color:var(--blue)">HB</div>
+              <div class="team-info">
+                <div class="team-name">Hermano Blancas</div>
+                <div class="team-role">Supervisor Creativo · Por confirmar</div>
+              </div>
+              <span class="team-status" style="background:var(--amber-bg);color:var(--amber)">Pendiente</span>
+            </div>
+            <div class="team-row">
+              <div class="team-avatar" style="background:var(--surface3);color:var(--text3)">?</div>
+              <div class="team-info">
+                <div class="team-name">Ejecutor Creativo</div>
+                <div class="team-role">Estudiante · Posición abierta</div>
+              </div>
+              <span class="team-status" style="background:var(--surface3);color:var(--text3)">Por contratar</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /app-body -->
+</div><!-- /app -->
+
+<script>
+// ── AUTH ──
+const USERS = {
+  'jordan': { name: 'Jordan Blancas', role: 'Fundador', avatar: 'JB' },
+  'admin':  { name: 'Jordan Blancas', role: 'Fundador', avatar: 'JB' },
+};
+
+document.getElementById('btn-login').addEventListener('click', doLogin);
+document.getElementById('inp-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+function doLogin() {
+  const user = document.getElementById('inp-user').value.trim().toLowerCase();
+  const pass = document.getElementById('inp-pass').value;
+  const err  = document.getElementById('login-error');
+
+  if (!user || !pass) { err.style.display='block'; err.textContent='Completa todos los campos.'; return; }
+
+  // Demo: acepta cualquier combinación
+  const profile = USERS[user] || { name: user.charAt(0).toUpperCase()+user.slice(1), role: 'Miembro', avatar: user.slice(0,2).toUpperCase() };
+
+  err.style.display = 'none';
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+
+  document.getElementById('top-name').textContent  = profile.name;
+  document.getElementById('top-role').textContent  = profile.role;
+  document.getElementById('top-avatar').textContent = profile.avatar;
+
+  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('es-PE', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+}
+
+// ── NAVIGATION ──
+function setPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+
+  const navMap = { dashboard: 0, ventures: 1, tareas: 2, equipo: 3 };
+  if (navMap[id] !== undefined) document.querySelectorAll('.nav-btn')[navMap[id]].classList.add('active');
+}
+
+// ── TASKS ──
+function toggleTask(el) {
+  const title = el.nextElementSibling.querySelector('.task-title');
+  if (el.classList.contains('done')) {
+    el.classList.remove('done');
+    el.textContent = '';
+    title.classList.remove('done-text');
+  } else {
+    el.classList.add('done');
+    el.textContent = '✓';
+    title.classList.add('done-text');
+  }
+}
+
+// ── PROGRESS ANIMATION ──
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    document.querySelectorAll('.progress-fill').forEach(bar => {
+      const w = bar.style.width;
+      bar.style.width = '0%';
+      setTimeout(() => { bar.style.width = w; }, 100);
+    });
+  }, 300);
+});
+</script>
+</body>
+</html>
