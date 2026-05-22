@@ -1277,6 +1277,17 @@ async function processInboxToToday() {
     return;
   }
 
+  if (!currentUser?.id) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user?.id) {
+      currentUser = session.user;
+    }
+  }
+  if (!currentUser?.id) {
+    alert('Tu sesion no esta activa. Vuelve a iniciar sesion.');
+    return;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const rows = lines.map(item => {
     const tags = [
@@ -1295,7 +1306,35 @@ async function processInboxToToday() {
 
   const { error } = await sb.from('tasks').insert(rows);
   if (error) {
-    alert('No se pudo guardar las notas. Revisa permisos o conexion.');
+    // Fallback: intenta guardar linea por linea para no perder todo el lote.
+    const perRowErrors = [];
+    let inserted = 0;
+    for (const row of rows) {
+      const { error: rowError } = await sb.from('tasks').insert(row);
+      if (rowError) {
+        perRowErrors.push(`${row.titulo}: ${rowError.message}`);
+      } else {
+        inserted += 1;
+      }
+    }
+
+    if (inserted > 0) {
+      await logActivity('convirtio notas del inbox en pendientes de hoy');
+      area.value = '';
+      localStorage.removeItem(getNotesDraftKey());
+      renderInboxPreview('');
+      await loadTasks();
+      await loadNotesToday();
+      renderTasksPanel();
+      renderTareasPage();
+      alert(`Se guardaron ${inserted} nota(s). ${perRowErrors.length ? 'Algunas lineas no se pudieron guardar.' : ''}`);
+      if (perRowErrors.length) console.error('Errores al guardar notas:', perRowErrors);
+      return;
+    }
+
+    const detail = error.message || error.details || 'Error desconocido';
+    console.error('Error guardando notas:', error, perRowErrors);
+    alert(`No se pudo guardar las notas. Detalle: ${detail}`);
     return;
   }
 
