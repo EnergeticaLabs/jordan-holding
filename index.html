@@ -2012,12 +2012,22 @@ function renderTeam() {
 
 // ── TASKS ──
 async function toggleTask(id, el) {
-  el.classList.add('done'); el.textContent='✓';
+  const isDone = el.classList.contains('done');
+  const nextDone = !isDone;
+  el.classList.toggle('done', nextDone);
+  el.textContent = nextDone ? '✓' : '';
   const titleNode = el.nextElementSibling.querySelector('.task-title, .notes-title-inline');
-  if (titleNode) titleNode.classList.add('done-text');
-  await sb.from('tasks').update({ estado:'completado', completado_en: new Date().toISOString() }).eq('id',id);
-  await logActivity('completó una tarea');
-  setTimeout(async()=>{ await loadTasks(); await loadNotesToday(); renderTasksPanel(); renderTareasPage(); }, 600);
+  if (titleNode) titleNode.classList.toggle('done-text', nextDone);
+
+  const payload = nextDone
+    ? { estado:'completado', completado_en: new Date().toISOString() }
+    : { estado:'pendiente', completado_en: null };
+  await sb.from('tasks').update(payload).eq('id',id);
+  await logActivity(nextDone ? 'completó una tarea' : 'reabrió una tarea');
+  await loadTasks();
+  await loadNotesToday();
+  renderTasksPanel();
+  renderTareasPage();
 }
 
 function openTaskModal() {
