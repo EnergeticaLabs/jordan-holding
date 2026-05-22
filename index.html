@@ -594,30 +594,36 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-tiny-link:hover { color: var(--gold); }
 .notes-today-item {
   display: grid;
-  grid-template-columns: 16px 1fr auto;
+  grid-template-columns: 16px minmax(0, 1fr) 56px;
   gap: 8px;
-  align-items: center;
+  align-items: start;
 }
 .notes-today-main {
   min-width: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  flex-wrap: nowrap;
-  overflow: hidden;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 .notes-title-inline {
   font-size: 11px;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+  flex: 1 1 100%;
 }
 .notes-priority-col {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text2);
+  white-space: nowrap;
+  text-align: right;
+  align-self: start;
 }
 .note-badge {
   display: inline-block; font-size: 9px; padding: 1px 5px;
@@ -698,7 +704,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .notes-grid { grid-template-columns: 1fr; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
-  .notes-line-input { font-size: 12px; }
+  .notes-line-input { font-size: 16px; }
   .notes-editor { min-height: 220px; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
@@ -1393,6 +1399,7 @@ function bindNotesInbox() {
 function renderInboxEditor() {
   const container = document.getElementById('notes-inbox-list');
   if (!container) return;
+  const prevScrollY = window.scrollY;
   const focusedEl = document.activeElement;
   const wasInboxFocused = focusedEl && focusedEl.classList && focusedEl.classList.contains('notes-line-input');
   const focusedLineId = wasInboxFocused ? focusedEl.dataset.lineId : null;
@@ -1426,6 +1433,7 @@ function renderInboxEditor() {
   container.querySelectorAll('.notes-line-input').forEach(autosizeNoteTextarea);
   updateInlineSuggestions();
 
+  if (!wasInboxFocused) return;
   const fallbackLineId = focusedLineId || activeInboxLineId || notesInboxLines[0]?.id || null;
   if (!fallbackLineId) return;
 
@@ -1445,6 +1453,7 @@ function renderInboxEditor() {
     } else {
       input.setSelectionRange(input.value.length, input.value.length);
     }
+    if (window.scrollY !== prevScrollY) window.scrollTo({ top: prevScrollY, behavior: 'auto' });
   });
 }
 
@@ -2143,8 +2152,6 @@ function setPage(id) {
   if (id === 'notas') {
     requestAnimationFrame(() => {
       document.querySelectorAll('.notes-line-input').forEach(autosizeNoteTextarea);
-      const lineId = activeInboxLineId || notesInboxLines[0]?.id || null;
-      if (lineId) focusInboxLine(lineId);
     });
   }
 }
