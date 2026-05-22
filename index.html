@@ -162,6 +162,15 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-radius: var(--radius-sm); padding: 10px 14px;
   font-size: 12px; color: var(--red); margin-bottom: 16px; display: none;
 }
+.pass-wrapper { position: relative; }
+.pass-wrapper .form-input { padding-right: 42px; box-sizing: border-box; }
+.pass-toggle {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; padding: 4px;
+  color: var(--text2); display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s; line-height: 0;
+}
+.pass-toggle:hover { color: var(--text); }
 
 /* ══════════════════════════════════════════
    APP SHELL
@@ -607,7 +616,19 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     </div>
     <div class="form-group">
       <label class="form-label">Contraseña</label>
-      <input type="password" class="form-input" id="inp-pass" placeholder="••••••••">
+      <div class="pass-wrapper">
+        <input type="password" class="form-input" id="inp-pass" placeholder="••••••••" autocomplete="current-password">
+        <button type="button" class="pass-toggle" id="btn-toggle-pass" onclick="togglePassVisibility()" title="Mostrar/ocultar contraseña" aria-label="Mostrar contraseña">
+          <!-- ojo abierto -->
+          <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+          <!-- ojo tachado -->
+          <svg id="eye-off-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
+      </div>
     </div>
     <button class="btn-login" id="btn-login">Ingresar al panel</button>
   </div>
@@ -814,11 +835,27 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 <script>
 const SUPABASE_URL = 'https://xzqiyjczzempnplveeyb.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6cWl5amN6emVtcG5wbHZlZXliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQxNTMsImV4cCI6MjA5NDk1MDE1M30.78nx91F76q8-M7NnS7arg_ueooovE7o63wUWJeK6WbA';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+    storageKey: 'vfh-session'
+  }
+});
 
 let currentUser = null;
 let venturesData = [];
 let tasksData    = [];
+
+// Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
+sb.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    currentUser = session.user;
+  } else if (event === 'SIGNED_OUT') {
+    currentUser = null;
+  }
+});
 
 // ── THEME ──
 function initTheme() {
@@ -861,6 +898,19 @@ async function init() {
 // ── AUTH ──
 document.getElementById('btn-login').addEventListener('click', doLogin);
 document.getElementById('inp-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+function togglePassVisibility() {
+  const passInput = document.getElementById('inp-pass');
+  const eyeIcon = document.getElementById('eye-icon');
+  const eyeOffIcon = document.getElementById('eye-off-icon');
+  const toggleBtn = document.getElementById('btn-toggle-pass');
+  const isHidden = passInput.type === 'password';
+
+  passInput.type = isHidden ? 'text' : 'password';
+  eyeIcon.style.display = isHidden ? 'none' : 'block';
+  eyeOffIcon.style.display = isHidden ? 'block' : 'none';
+  toggleBtn.setAttribute('aria-label', isHidden ? 'Ocultar contraseña' : 'Mostrar contraseña');
+}
 
 async function doLogin() {
   const email = document.getElementById('inp-email').value.trim();
