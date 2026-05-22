@@ -549,7 +549,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-line {
   display: grid;
   grid-template-columns: 1fr auto;
-  align-items: center;
+  align-items: start;
   gap: 8px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
@@ -557,11 +557,13 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-line:last-child { border-bottom: none; }
 .notes-line-input {
   width: 100%; border: none; background: transparent;
-  color: var(--text); font-size: 13px; outline: none;
-  font-family: 'Inter', sans-serif;
+  color: var(--text); font-size: 12px; outline: none;
+  font-family: 'Inter', sans-serif; resize: none;
+  overflow: hidden; line-height: 1.35; min-height: 18px;
+  white-space: pre-wrap; word-break: break-word;
 }
 .notes-line-check {
-  width: 14px; height: 14px;
+  width: 14px; height: 14px; margin-top: 3px;
 }
 .notes-preview {
   border: 1px dashed var(--border2);
@@ -696,7 +698,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .notes-grid { grid-template-columns: 1fr; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
-  .notes-line-input { font-size: 16px; }
+  .notes-line-input { font-size: 14px; }
   .notes-editor { max-height: 180px; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
@@ -1393,17 +1395,18 @@ function renderInboxEditor() {
   if (!container) return;
   container.innerHTML = notesInboxLines.map((line, idx) => {
     const parsed = parseInboxLine(line.text);
-    const checked = !!notesTaskLinkMap[parsed.fingerprint];
+    const checked = !!notesTaskLinkMap[line.id];
     return `
       <div class="notes-line">
-        <input
+        <textarea
           class="notes-line-input"
-          value="${escapeHtml(line.text)}"
+          data-line-id="${line.id}"
           placeholder="Escribe una nota..."
           onfocus="setActiveInboxLine('${line.id}')"
-          oninput="updateInboxLine('${line.id}', this.value)"
+          oninput="updateInboxLine('${line.id}', this.value); autosizeNoteTextarea(this);"
           onkeydown="handleInboxLineKeydown(event, '${line.id}')"
-        />
+          rows="1"
+        >${escapeHtml(line.text)}</textarea>
         <input
           type="checkbox"
           class="notes-line-check"
@@ -1414,7 +1417,14 @@ function renderInboxEditor() {
       </div>
     `;
   }).join('');
+  container.querySelectorAll('.notes-line-input').forEach(autosizeNoteTextarea);
   updateInlineSuggestions();
+}
+
+function autosizeNoteTextarea(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${Math.max(el.scrollHeight, 18)}px`;
 }
 
 function setActiveInboxLine(lineId) {
@@ -1447,17 +1457,11 @@ function insertInboxLineAfter(lineId, text = '') {
 }
 
 function focusInboxLine(lineId) {
-  const container = document.getElementById('notes-inbox-list');
-  const inputs = container?.querySelectorAll('.notes-line-input') || [];
-  for (const input of inputs) {
-    const onkeydown = input.getAttribute('onkeydown') || '';
-    if (onkeydown.includes(`'${lineId}'`)) {
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-      setActiveInboxLine(lineId);
-      break;
-    }
-  }
+  const input = document.querySelector(`.notes-line-input[data-line-id="${lineId}"]`);
+  if (!input) return;
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  setActiveInboxLine(lineId);
 }
 
 function removeInboxLine(lineId) {
@@ -1491,8 +1495,10 @@ function handleInboxLineKeydown(e, lineId) {
 function parseInboxLine(lineText) {
   const line = (lineText || '').trim();
   const isCheckboxPending = /^\[(x|\s)?\]/i.test(line);
-  const assignee = (line.match(/(^|\s)@([a-zA-Z0-9_-]+)/) || [])[2] || null;
-  const entity = (line.match(/(^|\s)#([a-zA-Z0-9_-]+)/) || [])[2] || null;
+  const assignees = [...line.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
+  const entities = [...line.matchAll(/(^|\s)#([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
+  const assignee = assignees[0] || null;
+  const entity = entities[0] || null;
   const prio = (line.match(/!(urgente|alta|media|baja)/i) || [])[1]?.toLowerCase() || 'media';
   const due = parseNaturalDueDate(line);
 
@@ -1515,7 +1521,9 @@ function parseInboxLine(lineText) {
     title,
     priority: ['urgente', 'alta', 'media', 'baja'].includes(prio) ? prio : 'media',
     assignee,
+      assignees,
     entity,
+      entities,
     ventureId: venture?.id || null,
     dueDate: due.dueDate,
     suggestedToday: isCheckboxPending || due.isTodayHint,
@@ -1602,8 +1610,8 @@ function renderInboxPreview() {
           <div>
             ${escapeHtml(i.title)}
             <span class="note-badge">${i.priority}</span>
-            ${i.assignee ? `<span class="note-badge">@${escapeHtml(i.assignee)}</span>` : ''}
-            ${i.entity ? `<span class="note-badge">#${escapeHtml(i.entity)}</span>` : ''}
+            ${i.assignees.map(a => `<span class="note-badge">@${escapeHtml(a)}</span>`).join('')}
+            ${i.entities.map(e => `<span class="note-badge">#${escapeHtml(e)}</span>`).join('')}
             ${i.dueDate ? `<span class="note-badge">${escapeHtml(i.dueDate)}</span>` : ''}
           </div>
         </div>
@@ -1638,8 +1646,8 @@ async function toggleInboxLineSync(index, checked) {
       return;
     }
     const tags = [
-      line.assignee ? `@${line.assignee}` : '',
-      line.entity ? `#${line.entity}` : ''
+      ...line.assignees.map(a => `@${a}`),
+      ...line.entities.map(e => `#${e}`)
     ].filter(Boolean).join(' ');
     const payload = {
       titulo: `${NOTE_PREFIX}${line.title}${tags ? ` ${tags}` : ''}`,
@@ -1827,14 +1835,14 @@ function cleanTaskTitle(title) {
 
 function parseTaskMeta(title) {
   const raw = cleanTaskTitle(title || '');
-  const assignee = (raw.match(/(^|\s)@([a-zA-Z0-9_-]+)/) || [])[2] || null;
-  const entity = (raw.match(/(^|\s)#([a-zA-Z0-9_-]+)/) || [])[2] || null;
+  const assignees = [...raw.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
+  const entities = [...raw.matchAll(/(^|\s)#([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
   const clean = raw
     .replace(/(^|\s)@[a-zA-Z0-9_-]+/g, ' ')
     .replace(/(^|\s)#[a-zA-Z0-9_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return { cleanTitle: clean || raw, assignee, entity };
+  return { cleanTitle: clean || raw, assignees, entities };
 }
 
 function purgeCompletedInboxLines() {
@@ -1858,7 +1866,7 @@ async function clearCompletedNotesToday() {
   if (!completed.length) return;
 
   const ids = completed.map(t => t.id);
-  const { error } = await sb.from('tasks').delete().in('id', ids);
+  const { error } = await sb.from('tasks').update({ estado: 'cancelado' }).in('id', ids);
   if (error) {
     alert('No se pudo limpiar tareas cumplidas.');
     return;
@@ -1890,8 +1898,8 @@ function renderNotesToday() {
         <div class="task-check ${t.estado === 'completado' ? 'done' : ''}" onclick="toggleTask('${t.id}',this)">${t.estado === 'completado' ? '✓' : ''}</div>
         <div class="notes-today-main">
           <span class="notes-title-inline ${t.estado === 'completado' ? 'done-text' : ''}">${escapeHtml(meta.cleanTitle)}</span>
-          ${meta.assignee ? `<span class="note-badge">@${escapeHtml(meta.assignee)}</span>` : ''}
-          ${meta.entity ? `<span class="note-badge">#${escapeHtml(meta.entity)}</span>` : ''}
+          ${meta.assignees.map(a => `<span class="note-badge">@${escapeHtml(a)}</span>`).join('')}
+          ${meta.entities.map(e => `<span class="note-badge">#${escapeHtml(e)}</span>`).join('')}
           ${t.ventures ? `<span class="note-badge">${t.ventures.emoji} ${t.ventures.nombre}</span>` : ''}
         </div>
         <div class="notes-priority-col">${escapeHtml(t.prioridad || 'media')}</div>
@@ -1932,7 +1940,8 @@ function renderTeam() {
 // ── TASKS ──
 async function toggleTask(id, el) {
   el.classList.add('done'); el.textContent='✓';
-  el.nextElementSibling.querySelector('.task-title').classList.add('done-text');
+  const titleNode = el.nextElementSibling.querySelector('.task-title, .notes-title-inline');
+  if (titleNode) titleNode.classList.add('done-text');
   await sb.from('tasks').update({ estado:'completado', completado_en: new Date().toISOString() }).eq('id',id);
   await logActivity('completó una tarea');
   setTimeout(async()=>{ await loadTasks(); await loadNotesToday(); renderTasksPanel(); renderTareasPage(); }, 600);
@@ -2004,6 +2013,11 @@ function timeAgo(ts) {
   if(h<24) return `Hace ${h}h`;
   return `Hace ${Math.floor(h/24)} día(s)`;
 }
+
+window.openNotesParserPreview = openNotesParserPreview;
+window.closeNotesParserPreview = closeNotesParserPreview;
+window.clearCompletedNotesToday = clearCompletedNotesToday;
+window.toggleInboxLineSyncById = toggleInboxLineSyncById;
 
 init();
 
