@@ -1986,7 +1986,6 @@ function renderNotesToday() {
           <span class="notes-title-inline ${t.estado === 'completado' ? 'done-text' : ''}">${escapeHtml(meta.cleanTitle)}</span>
           ${meta.assignees.map(a => `<span class="note-badge">@${escapeHtml(a)}</span>`).join('')}
           ${meta.entities.map(e => `<span class="note-badge">#${escapeHtml(e)}</span>`).join('')}
-          ${t.ventures ? `<span class="note-badge">${t.ventures.emoji} ${t.ventures.nombre}</span>` : ''}
         </div>
         <div class="notes-priority-col">${escapeHtml(t.prioridad || 'media')}</div>
       </div>
