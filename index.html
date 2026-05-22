@@ -539,14 +539,30 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   grid-template-columns: 1fr;
   gap: 8px;
 }
-.notes-textarea {
-  width: 100%; min-height: 170px; resize: vertical;
-  background: var(--surface2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: 10px; font-family: 'Inter', sans-serif; font-size: 14px;
-  outline: none;
+.notes-editor {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  max-height: 220px;
+  overflow: auto;
 }
-.notes-textarea:focus { border-color: var(--gold-dim); }
+.notes-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.notes-line:last-child { border-bottom: none; }
+.notes-line-input {
+  width: 100%; border: none; background: transparent;
+  color: var(--text); font-size: 13px; outline: none;
+  font-family: 'Inter', sans-serif;
+}
+.notes-line-check {
+  width: 14px; height: 14px;
+}
 .notes-preview {
   border: 1px dashed var(--border2);
   border-radius: 8px; padding: 8px;
@@ -567,6 +583,13 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 6px; gap: 8px; flex-wrap: wrap;
 }
+.notes-tiny-link {
+  font-size: 10px;
+  color: var(--text3);
+  cursor: pointer;
+  user-select: none;
+}
+.notes-tiny-link:hover { color: var(--gold); }
 .notes-today-item {
   display: grid;
   grid-template-columns: 16px 1fr auto;
@@ -673,7 +696,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .notes-grid { grid-template-columns: 1fr; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
-  .notes-textarea { min-height: 150px; font-size: 16px; }
+  .notes-line-input { font-size: 16px; }
+  .notes-editor { max-height: 180px; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
 }
@@ -686,7 +710,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .page-title    { font-size: 17px; }
   .main          { padding: 12px; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
-  .notes-textarea { min-height: 130px; font-size: 16px; }
+  .notes-editor { max-height: 160px; }
 }
 </style>
 </head>
@@ -897,17 +921,22 @@ select.form-input option { background: var(--surface2); color: var(--text); }
           <div class="notes-card">
             <div class="panel-header">
               <div class="panel-title">Pendientes de hoy</div>
-              <span class="panel-link" onclick="loadNotesToday()">Actualizar</span>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <span class="panel-link" onclick="clearCompletedNotesToday()">Limpiar cumplidas</span>
+                <span class="panel-link" onclick="loadNotesToday()">Actualizar</span>
+              </div>
             </div>
             <div class="panel-body" id="notes-today-list"></div>
           </div>
           <div class="notes-card">
-            <div class="panel-header"><div class="panel-title">Inbox libre</div></div>
+            <div class="panel-header">
+              <div class="panel-title">Inbox libre</div>
+              <span class="notes-tiny-link" onclick="openNotesParserPreview()">ver parser</span>
+            </div>
             <div class="notes-body">
               <div class="notes-help">Escribe sin formulario. Patrones opcionales: <strong>[]</strong> pendiente, <strong>@persona</strong> delegado, <strong>#entidad</strong> venture, <strong>!alta</strong> prioridad.</div>
               <div class="notes-compose">
-                <div class="notes-preview" id="notes-preview"></div>
-                <textarea id="notes-inbox" class="notes-textarea" placeholder="[] Llamar a proveedor @hermano #vatio !alta&#10;Idea para campana de fitbase #fitbase"></textarea>
+                <div class="notes-editor" id="notes-inbox-list"></div>
               </div>
               <div class="notes-quick">
                 <button type="button" class="quick-chip" onclick="insertIntoInbox('[] ')">Pendiente</button>
@@ -931,6 +960,18 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <div class="page" id="page-equipo">
         <div class="page-header">
           <div>
+
+          <!-- MODAL PREVIEW PARSER -->
+          <div class="modal-overlay" id="notes-parser-modal" style="display:none;" onclick="closeNotesParserPreview(event)">
+            <div class="modal" onclick="event.stopPropagation()" style="max-width:560px;">
+              <div class="modal-title">Vista del parser</div>
+              <div class="modal-sub">Solo referencial. El envio se hace con casillas del Inbox.</div>
+              <div class="notes-preview" id="notes-preview"></div>
+              <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeNotesParserPreview()">Cerrar</button>
+              </div>
+            </div>
+          </div>
             <div class="page-title">Equipo</div>
             <div class="page-sub">Miembros y roles del holding</div>
           </div>
@@ -1000,6 +1041,8 @@ let notesTodayData = [];
 let usersData = [];
 let notesPreviewData = [];
 let notesTaskLinkMap = {};
+let notesInboxLines = [];
+let activeInboxLineId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
 // Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
@@ -1308,19 +1351,177 @@ function saveNotesLinkMap() {
   localStorage.setItem(getNotesLinkMapKey(), JSON.stringify(notesTaskLinkMap));
 }
 
+function toLineObjects(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map(item => ({ id: item.id || crypto.randomUUID(), text: String(item.text || '') }))
+        .filter(item => item.text.trim().length > 0 || parsed.length === 1);
+    }
+  } catch (e) {
+    // backwards compatibility with old plain-text storage
+  }
+  return String(raw)
+    .split('\n')
+    .map(t => t.trim())
+    .filter(Boolean)
+    .map(t => ({ id: crypto.randomUUID(), text: t }));
+}
+
+function saveInboxLines() {
+  if (!notesInboxLines.length) {
+    localStorage.removeItem(getNotesDraftKey());
+    return;
+  }
+  localStorage.setItem(getNotesDraftKey(), JSON.stringify(notesInboxLines));
+}
+
 function bindNotesInbox() {
-  const area = document.getElementById('notes-inbox');
   const saved = localStorage.getItem(getNotesDraftKey()) || '';
   notesTaskLinkMap = JSON.parse(localStorage.getItem(getNotesLinkMapKey()) || '{}');
-  area.value = saved;
-  renderInboxPreview(saved);
-  area.addEventListener('input', () => {
-    localStorage.setItem(getNotesDraftKey(), area.value);
-    renderInboxPreview(area.value);
-    updateInlineSuggestions();
-  });
-  area.addEventListener('click', updateInlineSuggestions);
-  area.addEventListener('keyup', updateInlineSuggestions);
+  notesInboxLines = toLineObjects(saved);
+  if (!notesInboxLines.length) notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
+  activeInboxLineId = notesInboxLines[0].id;
+  renderInboxEditor();
+  renderInboxPreview();
+}
+
+function renderInboxEditor() {
+  const container = document.getElementById('notes-inbox-list');
+  if (!container) return;
+  container.innerHTML = notesInboxLines.map((line, idx) => {
+    const parsed = parseInboxLine(line.text);
+    const checked = !!notesTaskLinkMap[parsed.fingerprint];
+    return `
+      <div class="notes-line">
+        <input
+          class="notes-line-input"
+          value="${escapeHtml(line.text)}"
+          placeholder="Escribe una nota..."
+          onfocus="setActiveInboxLine('${line.id}')"
+          oninput="updateInboxLine('${line.id}', this.value)"
+          onkeydown="handleInboxLineKeydown(event, '${line.id}')"
+        />
+        <input
+          type="checkbox"
+          class="notes-line-check"
+          ${checked ? 'checked' : ''}
+          onchange="toggleInboxLineSyncById('${line.id}', this.checked)"
+          title="Enviar a pendientes de hoy"
+        />
+      </div>
+    `;
+  }).join('');
+  updateInlineSuggestions();
+}
+
+function setActiveInboxLine(lineId) {
+  activeInboxLineId = lineId;
+  updateInlineSuggestions();
+}
+
+function getInboxLineById(lineId) {
+  return notesInboxLines.find(line => line.id === lineId) || null;
+}
+
+function updateInboxLine(lineId, value) {
+  const line = getInboxLineById(lineId);
+  if (!line) return;
+  line.text = value;
+  saveInboxLines();
+  renderInboxPreview();
+  updateInlineSuggestions();
+}
+
+function insertInboxLineAfter(lineId, text = '') {
+  const idx = notesInboxLines.findIndex(line => line.id === lineId);
+  const next = { id: crypto.randomUUID(), text };
+  if (idx < 0) notesInboxLines.push(next);
+  else notesInboxLines.splice(idx + 1, 0, next);
+  saveInboxLines();
+  renderInboxEditor();
+  renderInboxPreview();
+  focusInboxLine(next.id);
+}
+
+function focusInboxLine(lineId) {
+  const container = document.getElementById('notes-inbox-list');
+  const inputs = container?.querySelectorAll('.notes-line-input') || [];
+  for (const input of inputs) {
+    const onkeydown = input.getAttribute('onkeydown') || '';
+    if (onkeydown.includes(`'${lineId}'`)) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      setActiveInboxLine(lineId);
+      break;
+    }
+  }
+}
+
+function removeInboxLine(lineId) {
+  const idx = notesInboxLines.findIndex(line => line.id === lineId);
+  if (idx < 0) return;
+  const prevId = idx > 0 ? notesInboxLines[idx - 1].id : (notesInboxLines[idx + 1]?.id || null);
+  notesInboxLines.splice(idx, 1);
+  if (!notesInboxLines.length) notesInboxLines.push({ id: crypto.randomUUID(), text: '' });
+  activeInboxLineId = prevId || notesInboxLines[0].id;
+  saveInboxLines();
+  renderInboxEditor();
+  renderInboxPreview();
+  if (activeInboxLineId) focusInboxLine(activeInboxLineId);
+}
+
+function handleInboxLineKeydown(e, lineId) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    insertInboxLineAfter(lineId, '');
+    return;
+  }
+  if (e.key === 'Backspace') {
+    const line = getInboxLineById(lineId);
+    if (line && !line.text && notesInboxLines.length > 1) {
+      e.preventDefault();
+      removeInboxLine(lineId);
+    }
+  }
+}
+
+function parseInboxLine(lineText) {
+  const line = (lineText || '').trim();
+  const isCheckboxPending = /^\[(x|\s)?\]/i.test(line);
+  const assignee = (line.match(/(^|\s)@([a-zA-Z0-9_-]+)/) || [])[2] || null;
+  const entity = (line.match(/(^|\s)#([a-zA-Z0-9_-]+)/) || [])[2] || null;
+  const prio = (line.match(/!(urgente|alta|media|baja)/i) || [])[1]?.toLowerCase() || 'media';
+  const due = parseNaturalDueDate(line);
+
+  let title = line
+    .replace(/^\[(x|\s)?\]\s*/i, '')
+    .replace(/(^|\s)@[a-zA-Z0-9_-]+/g, ' ')
+    .replace(/(^|\s)#[a-zA-Z0-9_-]+/g, ' ')
+    .replace(/!(urgente|alta|media|baja)/gi, ' ')
+    .replace(/(^|\s)(hoy|manana|mañana|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)(\s|$)/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!title) title = line;
+
+  const venture = entity
+    ? venturesData.find(v => v.nombre.toLowerCase().includes(entity.toLowerCase()))
+    : null;
+
+  return {
+    title,
+    priority: ['urgente', 'alta', 'media', 'baja'].includes(prio) ? prio : 'media',
+    assignee,
+    entity,
+    ventureId: venture?.id || null,
+    dueDate: due.dueDate,
+    suggestedToday: isCheckboxPending || due.isTodayHint,
+    rawLine: lineText || '',
+    fingerprint: normalizeText(line).replace(/\s+/g, ' ').trim()
+  };
 }
 
 function normalizeText(value) {
@@ -1369,56 +1570,27 @@ function parseNaturalDueDate(line) {
 }
 
 function parseInboxLines(rawText) {
-  const lines = rawText
+  if (rawText === undefined) {
+    return notesInboxLines
+      .filter(line => String(line.text || '').trim())
+      .map(line => ({ ...parseInboxLine(String(line.text)), lineId: line.id }));
+  }
+  return String(rawText)
     .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean);
-
-  return lines.map((line) => {
-    const isCheckboxPending = /^\[(x|\s)?\]/i.test(line);
-    const assignee = (line.match(/(^|\s)@([a-zA-Z0-9_-]+)/) || [])[2] || null;
-    const entity = (line.match(/(^|\s)#([a-zA-Z0-9_-]+)/) || [])[2] || null;
-    const prio = (line.match(/!(urgente|alta|media|baja)/i) || [])[1]?.toLowerCase() || 'media';
-    const due = parseNaturalDueDate(line);
-
-    let title = line
-      .replace(/^\[(x|\s)?\]\s*/i, '')
-      .replace(/(^|\s)@[a-zA-Z0-9_-]+/g, ' ')
-      .replace(/(^|\s)#[a-zA-Z0-9_-]+/g, ' ')
-      .replace(/!(urgente|alta|media|baja)/gi, ' ')
-      .replace(/(^|\s)(hoy|manana|mañana|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)(\s|$)/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (!title) title = line;
-
-    const venture = entity
-      ? venturesData.find(v => v.nombre.toLowerCase().includes(entity.toLowerCase()))
-      : null;
-
-    return {
-      title,
-      priority: ['urgente', 'alta', 'media', 'baja'].includes(prio) ? prio : 'media',
-      assignee,
-      entity,
-      ventureId: venture?.id || null,
-      dueDate: due.dueDate,
-      suggestedToday: isCheckboxPending || due.isTodayHint,
-      rawLine: line,
-      fingerprint: normalizeText(line).replace(/\s+/g, ' ').trim()
-    };
-  });
+    .filter(line => String(line || '').trim())
+    .map(line => ({ ...parseInboxLine(String(line)), lineId: null }));
 }
 
-function renderInboxPreview(text) {
+function renderInboxPreview() {
   const preview = document.getElementById('notes-preview');
-  const items = parseInboxLines(text);
+  if (!preview) return;
+  const items = parseInboxLines();
   notesPreviewData = items;
   if (!items.length) {
     preview.innerHTML = `<div class="notes-preview-title">Vista previa del parser</div><div class="empty-sub">Escribe una linea para ver como se convertira</div>`;
     return;
   }
-  const sentCount = items.filter(i => !!notesTaskLinkMap[i.fingerprint]).length;
+  const sentCount = items.filter(i => !!notesTaskLinkMap[i.lineId]).length;
   preview.innerHTML = `<div class="notes-preview-title">Vista previa del parser</div>
     <div class="notes-preview-controls">
       <span class="empty-sub">Enviadas: ${sentCount} de ${items.length} linea(s)</span>
@@ -1426,7 +1598,7 @@ function renderInboxPreview(text) {
     ${items.map((i, idx) => `
       <div class="notes-preview-item">
         <div class="notes-preview-row">
-          <input type="checkbox" class="notes-preview-check" ${notesTaskLinkMap[i.fingerprint] ? 'checked' : ''} onchange="toggleInboxLineSync(${idx}, this.checked)">
+          <input type="checkbox" class="notes-preview-check" ${notesTaskLinkMap[i.lineId] ? 'checked' : ''} onchange="toggleInboxLineSync(${idx}, this.checked)">
           <div>
             ${escapeHtml(i.title)}
             <span class="note-badge">${i.priority}</span>
@@ -1440,7 +1612,6 @@ function renderInboxPreview(text) {
 }
 
 async function toggleInboxLineSync(index, checked) {
-  const area = document.getElementById('notes-inbox');
   const line = notesPreviewData[index];
   if (!line) return;
 
@@ -1462,8 +1633,8 @@ async function toggleInboxLineSync(index, checked) {
   }
 
   if (checked) {
-    if (notesTaskLinkMap[line.fingerprint]?.taskId) {
-      renderInboxPreview(area.value);
+    if (notesTaskLinkMap[line.lineId]?.taskId) {
+      renderInboxPreview();
       return;
     }
     const tags = [
@@ -1482,22 +1653,22 @@ async function toggleInboxLineSync(index, checked) {
     if (error || !data?.id) {
       const detail = error?.message || error?.details || 'Error desconocido';
       alert(`No se pudo enviar la linea. Detalle: ${detail}`);
-      renderInboxPreview(area.value);
+      renderInboxPreview();
       return;
     }
-    notesTaskLinkMap[line.fingerprint] = { taskId: data.id };
+    notesTaskLinkMap[line.lineId] = { taskId: data.id };
     saveNotesLinkMap();
     await logActivity('convirtio una linea del inbox en pendiente de hoy');
   } else {
-    const link = notesTaskLinkMap[line.fingerprint];
+    const link = notesTaskLinkMap[line.lineId];
     if (!link?.taskId) {
-      renderInboxPreview(area.value);
+      renderInboxPreview();
       return;
     }
     const task = notesTodayData.find(t => t.id === link.taskId);
     if (task?.estado === 'completado') {
-      removeInboxLinesByFingerprints([line.fingerprint]);
-      delete notesTaskLinkMap[line.fingerprint];
+      removeInboxLinesByIds([line.lineId]);
+      delete notesTaskLinkMap[line.lineId];
       saveNotesLinkMap();
       return;
     }
@@ -1507,11 +1678,11 @@ async function toggleInboxLineSync(index, checked) {
       const { error: cancelError } = await sb.from('tasks').update({ estado: 'cancelado' }).eq('id', link.taskId);
       if (cancelError) {
         alert(`No se pudo revertir la linea. ${cancelError.message || deleteError.message}`);
-        renderInboxPreview(area.value);
+        renderInboxPreview();
         return;
       }
     }
-    delete notesTaskLinkMap[line.fingerprint];
+    delete notesTaskLinkMap[line.lineId];
     saveNotesLinkMap();
   }
 
@@ -1519,52 +1690,82 @@ async function toggleInboxLineSync(index, checked) {
   await loadNotesToday();
   renderTasksPanel();
   renderTareasPage();
-  renderInboxPreview(area.value);
+  renderInboxEditor();
+  renderInboxPreview();
+}
+
+async function toggleInboxLineSyncById(lineId, checked) {
+  const line = getInboxLineById(lineId);
+  if (!line || !String(line.text || '').trim()) {
+    renderInboxEditor();
+    return;
+  }
+  const parsed = parseInboxLine(line.text);
+  const idx = notesPreviewData.findIndex(item => item.lineId === lineId || item.fingerprint === parsed.fingerprint);
+  if (idx >= 0) {
+    await toggleInboxLineSync(idx, checked);
+  } else {
+    renderInboxEditor();
+  }
 }
 
 function clearNotesInbox() {
-  const area = document.getElementById('notes-inbox');
-  area.value = '';
+  notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
+  activeInboxLineId = notesInboxLines[0].id;
   localStorage.removeItem(getNotesDraftKey());
-  renderInboxPreview('');
+  renderInboxEditor();
+  renderInboxPreview();
 }
 
 function removeInboxLinesByFingerprints(fingerprints) {
   const fpSet = new Set(fingerprints);
-  const area = document.getElementById('notes-inbox');
-  const remaining = parseInboxLines(area.value).filter(line => !fpSet.has(line.fingerprint));
-  area.value = remaining.map(i => i.rawLine).join('\n');
-  if (area.value.trim()) {
-    localStorage.setItem(getNotesDraftKey(), area.value);
-  } else {
-    localStorage.removeItem(getNotesDraftKey());
+  notesInboxLines = notesInboxLines.filter(line => {
+    const parsed = parseInboxLine(line.text);
+    return !fpSet.has(parsed.fingerprint);
+  });
+  if (!notesInboxLines.length) notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
+  saveInboxLines();
+  renderInboxEditor();
+  renderInboxPreview();
+}
+
+function removeInboxLinesByIds(lineIds) {
+  const idSet = new Set(lineIds);
+  notesInboxLines = notesInboxLines.filter(line => !idSet.has(line.id));
+  if (!notesInboxLines.length) notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
+  saveInboxLines();
+  renderInboxEditor();
+  renderInboxPreview();
+}
+
+function openNotesParserPreview() {
+  renderInboxPreview();
+  document.getElementById('notes-parser-modal').style.display = 'flex';
+}
+
+function closeNotesParserPreview(e) {
+  if (!e || e.target === document.getElementById('notes-parser-modal')) {
+    document.getElementById('notes-parser-modal').style.display = 'none';
   }
-  renderInboxPreview(area.value);
 }
 
 function insertIntoInbox(textToInsert) {
-  const area = document.getElementById('notes-inbox');
-  const start = area.selectionStart;
-  const end = area.selectionEnd;
-  const value = area.value;
-  area.value = value.slice(0, start) + textToInsert + value.slice(end);
-  const nextPos = start + textToInsert.length;
-  area.selectionStart = nextPos;
-  area.selectionEnd = nextPos;
-  area.focus();
-  localStorage.setItem(getNotesDraftKey(), area.value);
-  renderInboxPreview(area.value);
-  updateInlineSuggestions();
+  const line = getInboxLineById(activeInboxLineId) || notesInboxLines[0];
+  if (!line) return;
+  line.text = `${line.text || ''}${textToInsert}`;
+  saveInboxLines();
+  renderInboxEditor();
+  renderInboxPreview();
+  focusInboxLine(line.id);
 }
 
 function updateInlineSuggestions() {
   const container = document.getElementById('notes-inline-suggestions');
-  const area = document.getElementById('notes-inbox');
-  if (!container || !area) return;
+  const line = getInboxLineById(activeInboxLineId);
+  if (!container || !line) return;
 
-  const cursor = area.selectionStart;
-  const beforeCursor = area.value.slice(0, cursor);
-  const match = beforeCursor.match(/(^|\s)([@#])([^\s@#]*)$/);
+  const raw = line.text || '';
+  const match = raw.match(/(^|\s)([@#])([^\s@#]*)$/);
   if (!match) {
     container.innerHTML = '';
     return;
@@ -1597,19 +1798,13 @@ function updateInlineSuggestions() {
 }
 
 function applyInlineSuggestion(insertValue) {
-  const area = document.getElementById('notes-inbox');
-  const cursor = area.selectionStart;
-  const value = area.value;
-  let start = cursor - 1;
-  while (start >= 0 && !/\s/.test(value[start])) start -= 1;
-  const tokenStart = start + 1;
-  area.value = value.slice(0, tokenStart) + insertValue + value.slice(cursor);
-  const nextPos = tokenStart + insertValue.length;
-  area.selectionStart = nextPos;
-  area.selectionEnd = nextPos;
-  area.focus();
-  localStorage.setItem(getNotesDraftKey(), area.value);
-  renderInboxPreview(area.value);
+  const line = getInboxLineById(activeInboxLineId);
+  if (!line) return;
+  line.text = (line.text || '').replace(/(^|\s)([@#])([^\s@#]*)$/, `$1${insertValue}`);
+  saveInboxLines();
+  renderInboxEditor();
+  renderInboxPreview();
+  focusInboxLine(line.id);
   updateInlineSuggestions();
 }
 
@@ -1645,17 +1840,39 @@ function parseTaskMeta(title) {
 function purgeCompletedInboxLines() {
   const completedIds = new Set(notesTodayData.filter(t => t.estado === 'completado').map(t => t.id));
   if (!completedIds.size) return;
-  const fingerprintsToRemove = [];
-  for (const [fingerprint, link] of Object.entries(notesTaskLinkMap)) {
+  const lineIdsToRemove = [];
+  for (const [lineId, link] of Object.entries(notesTaskLinkMap)) {
     if (completedIds.has(link.taskId)) {
-      fingerprintsToRemove.push(fingerprint);
-      delete notesTaskLinkMap[fingerprint];
+      lineIdsToRemove.push(lineId);
+      delete notesTaskLinkMap[lineId];
     }
   }
-  if (fingerprintsToRemove.length) {
+  if (lineIdsToRemove.length) {
     saveNotesLinkMap();
-    removeInboxLinesByFingerprints(fingerprintsToRemove);
+    removeInboxLinesByIds(lineIdsToRemove);
   }
+}
+
+async function clearCompletedNotesToday() {
+  const completed = notesTodayData.filter(t => t.estado === 'completado');
+  if (!completed.length) return;
+
+  const ids = completed.map(t => t.id);
+  const { error } = await sb.from('tasks').delete().in('id', ids);
+  if (error) {
+    alert('No se pudo limpiar tareas cumplidas.');
+    return;
+  }
+
+  const completedSet = new Set(ids);
+  for (const [lineId, link] of Object.entries(notesTaskLinkMap)) {
+    if (completedSet.has(link.taskId)) delete notesTaskLinkMap[lineId];
+  }
+  saveNotesLinkMap();
+  await loadTasks();
+  await loadNotesToday();
+  renderTasksPanel();
+  renderTareasPage();
 }
 
 function renderNotesToday() {
