@@ -925,7 +925,6 @@ select.form-input option { background: var(--surface2); color: var(--text); }
               <div class="panel-title">Pendientes de hoy</div>
               <div style="display:flex;gap:10px;align-items:center;">
                 <span class="panel-link" onclick="clearCompletedNotesToday()">Limpiar cumplidas</span>
-                <span class="panel-link" onclick="loadNotesToday()">Actualizar</span>
               </div>
             </div>
             <div class="panel-body" id="notes-today-list"></div>
@@ -1669,13 +1668,6 @@ async function toggleInboxLineSync(index, checked) {
     }
     notesTaskLinkMap[line.lineId] = { taskId: data.id };
     saveNotesLinkMap();
-    const source = getInboxLineById(line.lineId);
-    if (source?.text) {
-      source.text = normalizeLineSingleOwnerEntity(source.text);
-      saveInboxLines();
-      renderInboxEditor();
-      focusInboxLine(line.lineId);
-    }
     await logActivity('convirtio una linea del inbox en pendiente de hoy');
   } else {
     const link = notesTaskLinkMap[line.lineId];
@@ -2109,7 +2101,5 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
-</body>
-</html>
 </body>
 </html>
