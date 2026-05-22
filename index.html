@@ -557,7 +557,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-line:last-child { border-bottom: none; }
 .notes-line-input {
   width: 100%; border: none; background: transparent;
-  color: var(--text); font-size: 14px; outline: none;
+  color: var(--text); font-size: 16px; outline: none;
   font-family: 'Inter', sans-serif; resize: none;
   overflow: hidden; line-height: 1.35; min-height: 18px;
   white-space: pre-wrap; word-break: break-word;
@@ -713,6 +713,11 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
   .notes-editor { min-height: 220px; }
+  body.inbox-focus .notes-editor {
+    min-height: 128px;
+    max-height: 180px;
+    overflow: auto;
+  }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
 }
@@ -726,6 +731,11 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .main          { padding: 12px; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .notes-editor { min-height: 180px; }
+  body.inbox-focus .notes-editor {
+    min-height: 112px;
+    max-height: 150px;
+    overflow: auto;
+  }
 }
 </style>
 </head>
@@ -1421,8 +1431,9 @@ function renderInboxEditor() {
           class="notes-line-input"
           data-line-id="${line.id}"
           placeholder="Escribe una nota..."
-          onfocus="setActiveInboxLine('${line.id}'); ensureInboxComposerVisible();"
+          onfocus="setActiveInboxLine('${line.id}'); setInboxFocusMode(true); ensureInboxComposerVisible();"
           oninput="updateInboxLine('${line.id}', this.value); autosizeNoteTextarea(this); ensureInboxComposerVisible();"
+          onblur="handleInboxLineBlur()"
           onkeydown="handleInboxLineKeydown(event, '${line.id}')"
           rows="1"
         >${escapeHtml(line.text)}</textarea>
@@ -1463,6 +1474,18 @@ function renderInboxEditor() {
 }
 
 let ensureInboxVisibilityFrame = null;
+function setInboxFocusMode(isFocused) {
+  document.body.classList.toggle('inbox-focus', !!isFocused);
+}
+
+function handleInboxLineBlur() {
+  requestAnimationFrame(() => {
+    const active = document.activeElement;
+    const stillInInbox = !!(active && active.classList && active.classList.contains('notes-line-input'));
+    setInboxFocusMode(stillInInbox);
+  });
+}
+
 function ensureInboxComposerVisible() {
   if (ensureInboxVisibilityFrame) cancelAnimationFrame(ensureInboxVisibilityFrame);
   ensureInboxVisibilityFrame = requestAnimationFrame(() => {
@@ -1472,18 +1495,24 @@ function ensureInboxComposerVisible() {
     const composer = notesPage.querySelector('.notes-card:last-child .notes-body');
     if (!composer) return;
 
+    const vv = window.visualViewport;
+    const viewportTop = vv ? vv.offsetTop : 0;
+    const viewportHeight = vv ? vv.height : window.innerHeight;
+    const viewportBottom = viewportTop + viewportHeight;
+    const keyboardInset = Math.max(0, window.innerHeight - viewportHeight - viewportTop);
+
     const rect = composer.getBoundingClientRect();
-    const safeTop = 72;
-    const safeBottom = Math.max(130, window.innerHeight * 0.28);
+    const safeTop = viewportTop + 64;
+    const safeBottom = Math.max(16, keyboardInset + 16);
     let delta = 0;
 
     if (rect.top < safeTop) {
       delta = rect.top - safeTop;
-    } else if (rect.bottom > window.innerHeight - safeBottom) {
-      delta = rect.bottom - (window.innerHeight - safeBottom);
+    } else if (rect.bottom > viewportBottom - safeBottom) {
+      delta = rect.bottom - (viewportBottom - safeBottom);
     }
 
-    if (delta !== 0) window.scrollBy({ top: delta, behavior: 'smooth' });
+    if (delta !== 0) window.scrollBy({ top: delta, behavior: 'auto' });
   });
 }
 
@@ -2179,6 +2208,7 @@ function setPage(id) {
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
   const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
   if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
+  if (id !== 'notas') setInboxFocusMode(false);
   if (id === 'notas') {
     requestAnimationFrame(() => {
       document.querySelectorAll('.notes-line-input').forEach(autosizeNoteTextarea);
