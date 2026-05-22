@@ -503,6 +503,47 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .empty-text  { font-size: 13px; color: var(--text2); margin-bottom: 6px; }
 .empty-sub   { font-size: 11px; }
 
+/* ══ NOTES (C + B) ══ */
+.notes-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.notes-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.notes-body { padding: 14px 16px; }
+.notes-help {
+  font-size: 11px; color: var(--text3); line-height: 1.5;
+  margin-bottom: 10px;
+}
+.notes-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.notes-textarea {
+  width: 100%; min-height: 260px; resize: vertical;
+  background: var(--surface2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; font-family: 'Inter', sans-serif; font-size: 13px;
+  outline: none;
+}
+.notes-textarea:focus { border-color: var(--gold-dim); }
+.notes-preview {
+  margin-top: 12px; border: 1px dashed var(--border2);
+  border-radius: 10px; padding: 10px;
+}
+.notes-preview-title { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
+.notes-preview-item {
+  font-size: 12px; color: var(--text2); padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.notes-preview-item:last-child { border-bottom: none; }
+.note-badge {
+  display: inline-block; font-size: 10px; padding: 1px 6px;
+  border-radius: 8px; background: var(--surface3); color: var(--text2);
+  margin-left: 6px;
+}
+
 /* ══ PAGES ══ */
 .page { display: none; }
 .page.active { display: block; }
@@ -573,6 +614,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .ventures-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .bottom-grid { grid-template-columns: 1fr; gap: 10px; }
+  .notes-grid { grid-template-columns: 1fr; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
 }
@@ -648,6 +690,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <button class="nav-btn active" onclick="setPage('dashboard')">Dashboard</button>
       <button class="nav-btn" onclick="setPage('ventures')">Ventures</button>
       <button class="nav-btn" onclick="setPage('tareas')">Tareas</button>
+      <button class="nav-btn" onclick="setPage('notas')">Notas</button>
       <button class="nav-btn" onclick="setPage('equipo')">Equipo</button>
     </div>
     <div class="topbar-right">
@@ -688,6 +731,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <div class="sidebar-item" onclick="setPage('tareas');closeSidebar()">
           <span class="sidebar-icon">✓</span>Tareas
           <span class="sidebar-badge" id="sb-tareas">—</span>
+        </div>
+        <div class="sidebar-item" onclick="setPage('notas');closeSidebar()">
+          <span class="sidebar-icon">✎</span>Notas
         </div>
         <div class="sidebar-item" onclick="setPage('equipo');closeSidebar()">
           <span class="sidebar-icon">◎</span>Equipo
@@ -779,6 +825,37 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <div id="tareas-list"></div>
       </div>
 
+      <!-- NOTAS -->
+      <div class="page" id="page-notas">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Notas</div>
+            <div class="page-sub">Escribe libre y conviertelo en pendientes del dia</div>
+          </div>
+        </div>
+        <div class="notes-grid">
+          <div class="notes-card">
+            <div class="panel-header">
+              <div class="panel-title">Pendientes de hoy</div>
+              <span class="panel-link" onclick="loadNotesToday()">Actualizar</span>
+            </div>
+            <div class="panel-body" id="notes-today-list"></div>
+          </div>
+          <div class="notes-card">
+            <div class="panel-header"><div class="panel-title">Inbox libre</div></div>
+            <div class="notes-body">
+              <div class="notes-help">Escribe sin formulario. Patrones opcionales: <strong>[]</strong> pendiente, <strong>@persona</strong> delegado, <strong>#entidad</strong> venture, <strong>!alta</strong> prioridad.</div>
+              <textarea id="notes-inbox" class="notes-textarea" placeholder="[] Llamar a proveedor @hermano #vatio !alta&#10;Idea para campana de fitbase #fitbase"></textarea>
+              <div class="notes-actions">
+                <button class="btn btn-primary-sm" onclick="processInboxToToday()">Enviar a hoy</button>
+                <button class="btn btn-secondary" onclick="clearNotesInbox()">Limpiar</button>
+              </div>
+              <div class="notes-preview" id="notes-preview"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- EQUIPO -->
       <div class="page" id="page-equipo">
         <div class="page-header">
@@ -847,6 +924,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 let currentUser = null;
 let venturesData = [];
 let tasksData    = [];
+let notesTodayData = [];
+const NOTE_PREFIX = '[NOTA] ';
 
 // Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
 sb.auth.onAuthStateChange((event, session) => {
@@ -947,6 +1026,8 @@ async function loadApp() {
   document.getElementById('app').classList.add('visible');
   await loadUserProfile();
   await Promise.all([loadVentures(), loadTasks(), loadActivity()]);
+  await loadNotesToday();
+  bindNotesInbox();
   renderDashboard();
   setDate();
 }
@@ -1052,7 +1133,7 @@ function renderTasksPanel() {
     <div class="task-item">
       <div class="task-check" onclick="toggleTask('${t.id}',this)"></div>
       <div class="task-content">
-        <div class="task-title">${t.titulo}</div>
+        <div class="task-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
         <div class="task-meta">
           <div class="priority-dot p-${t.prioridad}"></div>
           <span>${t.prioridad.charAt(0).toUpperCase()+t.prioridad.slice(1)}</span>
@@ -1110,7 +1191,7 @@ function renderTareasPage() {
     <div class="task-item">
       <div class="task-check" onclick="toggleTask('${t.id}',this)"></div>
       <div class="task-content">
-        <div class="task-title">${t.titulo}</div>
+        <div class="task-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
         <div class="task-meta">
           <div class="priority-dot p-${t.prioridad}"></div>
           <span>${t.prioridad.charAt(0).toUpperCase()+t.prioridad.slice(1)}</span>
@@ -1119,6 +1200,167 @@ function renderTareasPage() {
         </div>
       </div>
     </div>`).join('')}</div></div>`;
+}
+
+// ── NOTES (C + B) ──
+function getNotesDraftKey() {
+  return `vfh-notes-draft-${currentUser?.id || 'anon'}`;
+}
+
+function bindNotesInbox() {
+  const area = document.getElementById('notes-inbox');
+  const saved = localStorage.getItem(getNotesDraftKey()) || '';
+  area.value = saved;
+  renderInboxPreview(saved);
+  area.addEventListener('input', () => {
+    localStorage.setItem(getNotesDraftKey(), area.value);
+    renderInboxPreview(area.value);
+  });
+}
+
+function parseInboxLines(rawText) {
+  const lines = rawText
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  return lines.map((line) => {
+    const assignee = (line.match(/(^|\s)@([a-zA-Z0-9_-]+)/) || [])[2] || null;
+    const entity = (line.match(/(^|\s)#([a-zA-Z0-9_-]+)/) || [])[2] || null;
+    const prio = (line.match(/!(urgente|alta|media|baja)/i) || [])[1]?.toLowerCase() || 'media';
+
+    let title = line
+      .replace(/^\[(x|\s)?\]\s*/i, '')
+      .replace(/(^|\s)@[a-zA-Z0-9_-]+/g, ' ')
+      .replace(/(^|\s)#[a-zA-Z0-9_-]+/g, ' ')
+      .replace(/!(urgente|alta|media|baja)/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!title) title = line;
+
+    const venture = entity
+      ? venturesData.find(v => v.nombre.toLowerCase().includes(entity.toLowerCase()))
+      : null;
+
+    return {
+      title,
+      priority: ['urgente', 'alta', 'media', 'baja'].includes(prio) ? prio : 'media',
+      assignee,
+      entity,
+      ventureId: venture?.id || null
+    };
+  });
+}
+
+function renderInboxPreview(text) {
+  const preview = document.getElementById('notes-preview');
+  const items = parseInboxLines(text).slice(0, 6);
+  if (!items.length) {
+    preview.innerHTML = `<div class="notes-preview-title">Vista previa del parser</div><div class="empty-sub">Escribe una linea para ver como se convertira</div>`;
+    return;
+  }
+  preview.innerHTML = `<div class="notes-preview-title">Vista previa del parser</div>${items.map(i => `
+    <div class="notes-preview-item">${escapeHtml(i.title)}
+      <span class="note-badge">${i.priority}</span>
+      ${i.assignee ? `<span class="note-badge">@${escapeHtml(i.assignee)}</span>` : ''}
+      ${i.entity ? `<span class="note-badge">#${escapeHtml(i.entity)}</span>` : ''}
+    </div>
+  `).join('')}`;
+}
+
+async function processInboxToToday() {
+  const area = document.getElementById('notes-inbox');
+  const lines = parseInboxLines(area.value);
+  if (!lines.length) {
+    alert('Escribe al menos una linea en el Inbox.');
+    return;
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = lines.map(item => {
+    const tags = [
+      item.assignee ? `@${item.assignee}` : '',
+      item.entity ? `#${item.entity}` : ''
+    ].filter(Boolean).join(' ');
+    return {
+      titulo: `${NOTE_PREFIX}${item.title}${tags ? ` ${tags}` : ''}`,
+      venture_id: item.ventureId,
+      prioridad: item.priority,
+      fecha_limite: today,
+      estado: 'pendiente',
+      creado_por: currentUser.id
+    };
+  });
+
+  const { error } = await sb.from('tasks').insert(rows);
+  if (error) {
+    alert('No se pudo guardar las notas. Revisa permisos o conexion.');
+    return;
+  }
+
+  await logActivity('convirtio notas del inbox en pendientes de hoy');
+  area.value = '';
+  localStorage.removeItem(getNotesDraftKey());
+  renderInboxPreview('');
+  await loadTasks();
+  await loadNotesToday();
+  renderTasksPanel();
+  renderTareasPage();
+}
+
+function clearNotesInbox() {
+  const area = document.getElementById('notes-inbox');
+  area.value = '';
+  localStorage.removeItem(getNotesDraftKey());
+  renderInboxPreview('');
+}
+
+async function loadNotesToday() {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await sb.from('tasks')
+    .select('*, ventures(nombre,emoji)')
+    .like('titulo', `${NOTE_PREFIX}%`)
+    .eq('fecha_limite', today)
+    .neq('estado', 'cancelado')
+    .order('id', { ascending: false });
+  notesTodayData = data || [];
+  renderNotesToday();
+}
+
+function cleanTaskTitle(title) {
+  return (title || '').replace(/^\[NOTA\]\s*/i, '').trim();
+}
+
+function renderNotesToday() {
+  const el = document.getElementById('notes-today-list');
+  if (!el) return;
+  if (!notesTodayData.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✎</div><div class="empty-text">Sin pendientes de hoy</div><div class="empty-sub">Escribe en Inbox y enviarlo a hoy</div></div>`;
+    return;
+  }
+  el.innerHTML = notesTodayData.map(t => `
+    <div class="task-item">
+      <div class="task-check ${t.estado === 'completado' ? 'done' : ''}" onclick="toggleTask('${t.id}',this)">${t.estado === 'completado' ? '✓' : ''}</div>
+      <div class="task-content">
+        <div class="task-title ${t.estado === 'completado' ? 'done-text' : ''}">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        <div class="task-meta">
+          <div class="priority-dot p-${t.prioridad}"></div>
+          <span>${t.prioridad?.charAt(0).toUpperCase() + t.prioridad?.slice(1)}</span>
+          ${t.ventures ? `<span class="task-venture-tag">${t.ventures.emoji} ${t.ventures.nombre}</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function renderTeam() {
@@ -1146,7 +1388,7 @@ async function toggleTask(id, el) {
   el.nextElementSibling.querySelector('.task-title').classList.add('done-text');
   await sb.from('tasks').update({ estado:'completado', completado_en: new Date().toISOString() }).eq('id',id);
   await logActivity('completó una tarea');
-  setTimeout(async()=>{ await loadTasks(); renderTasksPanel(); renderTareasPage(); }, 600);
+  setTimeout(async()=>{ await loadTasks(); await loadNotesToday(); renderTasksPanel(); renderTareasPage(); }, 600);
 }
 
 function openTaskModal() {
@@ -1188,7 +1430,7 @@ function setPage(id) {
   document.getElementById('page-'+id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
-  const idx={dashboard:0,ventures:1,tareas:2,equipo:3};
+  const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
   if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
 }
 
