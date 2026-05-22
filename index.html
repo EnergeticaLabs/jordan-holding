@@ -557,7 +557,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-line:last-child { border-bottom: none; }
 .notes-line-input {
   width: 100%; border: none; background: transparent;
-  color: var(--text); font-size: 12px; outline: none;
+  color: var(--text); font-size: 11px; outline: none;
   font-family: 'Inter', sans-serif; resize: none;
   overflow: hidden; line-height: 1.35; min-height: 18px;
   white-space: pre-wrap; word-break: break-word;
@@ -698,7 +698,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .notes-grid { grid-template-columns: 1fr; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
-  .notes-line-input { font-size: 14px; }
+  .notes-line-input { font-size: 12px; }
   .notes-editor { max-height: 180px; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
@@ -1436,13 +1436,90 @@ function getInboxLineById(lineId) {
   return notesInboxLines.find(line => line.id === lineId) || null;
 }
 
+function pickLastToken(text, prefix) {
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(^|\\s)${escaped}([a-zA-Z0-9_-]+)`, 'g');
+  let last = null;
+  let m;
+  while ((m = re.exec(text)) !== null) last = m[2];
+  return last;
+}
+
+function normalizeLineSingleOwnerEntity(text) {
+  const raw = String(text || '');
+  const lastAssignee = pickLastToken(raw, '@');
+  const lastEntity = pickLastToken(raw, '#');
+
+  let clean = raw
+    .replace(/(^|\s)@[a-zA-Z0-9_-]+/g, ' ')
+    .replace(/(^|\s)#[a-zA-Z0-9_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (lastAssignee) clean += ` @${lastAssignee}`;
+  if (lastEntity) clean += ` #${lastEntity}`;
+  return clean.trim();
+}
+
+function scheduleSyncLinkedInboxLine(lineId) {
+  const link = notesTaskLinkMap[lineId];
+  if (!link?.taskId) return;
+  if (notesSyncTimers[lineId]) clearTimeout(notesSyncTimers[lineId]);
+  notesSyncTimers[lineId] = setTimeout(async () => {
+    await syncLinkedInboxLine(lineId);
+  }, 450);
+}
+
+async function syncLinkedInboxLine(lineId) {
+  const link = notesTaskLinkMap[lineId];
+  if (!link?.taskId) return;
+  const line = getInboxLineById(lineId);
+  if (!line) return;
+
+  const normalized = normalizeLineSingleOwnerEntity(line.text);
+  if (normalized !== line.text) {
+    line.text = normalized;
+    saveInboxLines();
+    renderInboxEditor();
+    focusInboxLine(lineId);
+  }
+
+  const parsed = parseInboxLine(line.text);
+  if (!parsed.title) return;
+  const tags = [
+    ...parsed.assignees.map(a => `@${a}`),
+    ...parsed.entities.map(e => `#${e}`)
+  ].join(' ');
+
+  const payload = {
+    titulo: `${NOTE_PREFIX}${parsed.title}${tags ? ` ${tags}` : ''}`,
+    venture_id: parsed.ventureId,
+    prioridad: parsed.priority,
+    fecha_limite: parsed.dueDate
+  };
+
+  const { error } = await sb.from('tasks').update(payload).eq('id', link.taskId);
+  if (!error) {
+    await loadTasks();
+    await loadNotesToday();
+    renderTasksPanel();
+    renderTareasPage();
+  }
+}
+
 function updateInboxLine(lineId, value) {
   const line = getInboxLineById(lineId);
   if (!line) return;
-  line.text = value;
+  const normalized = normalizeLineSingleOwnerEntity(value);
+  line.text = normalized;
   saveInboxLines();
+  if (normalized !== value) {
+    renderInboxEditor();
+    focusInboxLine(lineId);
+  }
   renderInboxPreview();
   updateInlineSuggestions();
+  scheduleSyncLinkedInboxLine(lineId);
 }
 
 function insertInboxLineAfter(lineId, text = '') {
@@ -1480,6 +1557,8 @@ function removeInboxLine(lineId) {
 function handleInboxLineKeydown(e, lineId) {
   if (e.key === 'Enter') {
     e.preventDefault();
+    const line = getInboxLineById(lineId);
+    if (line?.text) scheduleSyncLinkedInboxLine(lineId);
     insertInboxLineAfter(lineId, '');
     return;
   }
@@ -1864,7 +1943,12 @@ function purgeCompletedInboxLines() {
 }
 
 async function clearCompletedNotesToday() {
-  const completed = notesTodayData.filter(t => t.estado === 'completado');
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: completed } = await sb.from('tasks')
+    .select('id')
+    .like('titulo', `${NOTE_PREFIX}%`)
+    .eq('fecha_limite', today)
+    .eq('estado', 'completado');
   if (!completed.length) return;
 
   const ids = completed.map(t => t.id);
@@ -1965,75 +2049,6 @@ async function saveTask() {
   const titulo    = document.getElementById('task-titulo').value.trim();
   const venture   = document.getElementById('task-venture').value;
   const prioridad = document.getElementById('task-prioridad').value;
-  const fecha     = document.getElementById('task-fecha').value;
-  if (!titulo) { alert('Escribe el título de la tarea'); return; }
-
-  const creatorProfileId = await ensureCurrentProfileId();
-  if (!creatorProfileId) {
-    alert('No se encontro tu perfil interno en users. Revisa tu registro en la base de datos.');
-    return;
-  }
-
-  const { error } = await sb.from('tasks').insert({
-    titulo, venture_id: venture||null, prioridad,
-    fecha_limite: fecha||null, estado:'pendiente', creado_por: creatorProfileId
-  });
-  if (!error) {
-    await logActivity('creó una nueva tarea');
-    closeTaskModal(); await loadTasks(); renderTasksPanel(); renderTareasPage();
-  }
-}
-
-async function logActivity(accion) {
-  const { data: p } = await sb.from('users').select('id').eq('auth_id', currentUser.id).single();
-  if (p) { await sb.from('activity_log').insert({ user_id:p.id, accion }); await loadActivity(); }
-}
-
-// ── NAV ──
-function setPage(id) {
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
-  const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
-  if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
-}
-
-// ── UTILS ──
-function setDate() {
-  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('es-PE',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-}
-function formatDate(d) {
-  if(!d) return '';
-  return new Date(d+'T00:00:00').toLocaleDateString('es-PE',{day:'numeric',month:'short'});
-}
-function timeAgo(ts) {
-  const m = Math.floor((Date.now()-new Date(ts).getTime())/60000);
-  if(m<1) return 'Ahora mismo';
-  if(m<60) return `Hace ${m} min`;
-  const h=Math.floor(m/60);
-  if(h<24) return `Hace ${h}h`;
-  return `Hace ${Math.floor(h/24)} día(s)`;
-}
-
-window.openNotesParserPreview = openNotesParserPreview;
-window.closeNotesParserPreview = closeNotesParserPreview;
-window.clearCompletedNotesToday = clearCompletedNotesToday;
-window.toggleInboxLineSyncById = toggleInboxLineSyncById;
-
-init();
-
-// ── PWA: REGISTRAR SERVICE WORKER ──
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
-      .then(reg => console.log("SW registrado:", reg.scope))
-      .catch(err => console.log("SW error:", err));
-  });
-}
-</script>
-</body>
-</html>
   const fecha     = document.getElementById('task-fecha').value;
   if (!titulo) { alert('Escribe el título de la tarea'); return; }
 
