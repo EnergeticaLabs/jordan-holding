@@ -543,8 +543,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface2);
-  max-height: 220px;
-  overflow: auto;
+  min-height: 280px;
+  overflow: visible;
 }
 .notes-line {
   display: grid;
@@ -557,7 +557,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-line:last-child { border-bottom: none; }
 .notes-line-input {
   width: 100%; border: none; background: transparent;
-  color: var(--text); font-size: 11px; outline: none;
+  color: var(--text); font-size: 10px; outline: none;
   font-family: 'Inter', sans-serif; resize: none;
   overflow: hidden; line-height: 1.35; min-height: 18px;
   white-space: pre-wrap; word-break: break-word;
@@ -698,8 +698,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .notes-grid { grid-template-columns: 1fr; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
-  .notes-line-input { font-size: 16px; }
-  .notes-editor { max-height: 180px; }
+  .notes-line-input { font-size: 12px; }
+  .notes-editor { min-height: 220px; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
 }
@@ -1815,6 +1815,23 @@ function removeInboxLinesByIds(lineIds) {
   renderInboxPreview();
 }
 
+function findLineIdsByTaskId(taskId) {
+  return Object.entries(notesTaskLinkMap)
+    .filter(([, link]) => link.taskId === taskId)
+    .map(([lineId]) => lineId);
+}
+
+function ensureInboxLineLinkedToTask(task) {
+  let lineId = findLineIdsByTaskId(task.id)[0] || null;
+  if (!lineId) {
+    lineId = crypto.randomUUID();
+    notesInboxLines.push({ id: lineId, text: cleanTaskTitle(task.titulo) });
+  }
+  notesTaskLinkMap[lineId] = { taskId: task.id };
+  saveNotesLinkMap();
+  saveInboxLines();
+}
+
 function openNotesParserPreview() {
   renderInboxPreview();
   document.getElementById('notes-parser-modal').style.display = 'flex';
@@ -2023,6 +2040,24 @@ async function toggleTask(id, el) {
     ? { estado:'completado', completado_en: new Date().toISOString() }
     : { estado:'pendiente', completado_en: null };
   await sb.from('tasks').update(payload).eq('id',id);
+
+  const task = notesTodayData.find(t => t.id === id) || null;
+  const isNoteTask = task?.titulo?.startsWith(NOTE_PREFIX);
+  if (isNoteTask) {
+    if (nextDone) {
+      const linkedLineIds = findLineIdsByTaskId(id);
+      if (linkedLineIds.length) {
+        linkedLineIds.forEach(lineId => delete notesTaskLinkMap[lineId]);
+        saveNotesLinkMap();
+        removeInboxLinesByIds(linkedLineIds);
+      }
+    } else {
+      ensureInboxLineLinkedToTask(task);
+      renderInboxEditor();
+      renderInboxPreview();
+    }
+  }
+
   await logActivity(nextDone ? 'completó una tarea' : 'reabrió una tarea');
   await loadTasks();
   await loadNotesToday();
@@ -2078,6 +2113,11 @@ function setPage(id) {
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
   const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
   if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
+  if (id === 'notas') {
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.notes-line-input').forEach(autosizeNoteTextarea);
+    });
+  }
 }
 
 // ── UTILS ──
