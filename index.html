@@ -506,60 +506,71 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 /* ══ NOTES (C + B) ══ */
 .notes-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  grid-template-columns: 0.95fr 1.05fr;
+  gap: 10px;
 }
 .notes-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow);
   overflow: hidden;
 }
-.notes-body { padding: 14px 16px; }
+.notes-card .panel-header { padding: 10px 12px; }
+.notes-card .panel-body { padding: 0; }
+.notes-card .task-item { padding: 8px 12px; }
+.notes-body { padding: 10px 12px; }
 .notes-help {
-  font-size: 11px; color: var(--text3); line-height: 1.5;
-  margin-bottom: 10px;
+  font-size: 10px; color: var(--text3); line-height: 1.4;
+  margin-bottom: 8px;
 }
-.notes-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-.notes-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.notes-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.notes-actions .btn { padding: 6px 10px; font-size: 11px; }
+.notes-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .quick-chip {
-  font-size: 11px; padding: 4px 8px; border-radius: 999px;
+  font-size: 10px; padding: 3px 8px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--surface2);
   color: var(--text2); cursor: pointer;
 }
 .quick-chip:hover { color: var(--text); border-color: var(--border2); }
 .notes-inline-suggestions {
-  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;
+}
+.notes-compose {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 .notes-textarea {
-  width: 100%; min-height: 260px; resize: vertical;
+  width: 100%; min-height: 170px; resize: vertical;
   background: var(--surface2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 10px;
-  padding: 12px; font-family: 'Inter', sans-serif; font-size: 16px;
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px; font-family: 'Inter', sans-serif; font-size: 14px;
   outline: none;
 }
 .notes-textarea:focus { border-color: var(--gold-dim); }
 .notes-preview {
-  margin-top: 12px; border: 1px dashed var(--border2);
-  border-radius: 10px; padding: 10px;
+  border: 1px dashed var(--border2);
+  border-radius: 8px; padding: 8px;
+  max-height: 150px;
+  overflow: auto;
 }
-.notes-preview-title { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
+.notes-preview-title { font-size: 10px; color: var(--text2); margin-bottom: 5px; }
 .notes-preview-item {
-  font-size: 12px; color: var(--text2); padding: 6px 0;
+  font-size: 11px; color: var(--text2); padding: 5px 0;
   border-bottom: 1px solid var(--border);
 }
 .notes-preview-item:last-child { border-bottom: none; }
 .notes-preview-row { display: flex; align-items: flex-start; gap: 8px; }
 .notes-preview-check {
-  margin-top: 2px; width: 14px; height: 14px;
+  margin-top: 1px; width: 13px; height: 13px;
 }
 .notes-preview-controls {
   display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 8px; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 6px; gap: 8px; flex-wrap: wrap;
 }
 .note-badge {
-  display: inline-block; font-size: 10px; padding: 1px 6px;
+  display: inline-block; font-size: 9px; padding: 1px 5px;
   border-radius: 8px; background: var(--surface3); color: var(--text2);
-  margin-left: 6px;
+  margin-left: 4px;
 }
 
 /* ══ PAGES ══ */
@@ -633,6 +644,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .ventures-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .bottom-grid { grid-template-columns: 1fr; gap: 10px; }
   .notes-grid { grid-template-columns: 1fr; }
+  .notes-body { padding: 8px 10px; }
+  .notes-preview { max-height: 132px; }
+  .notes-textarea { min-height: 150px; font-size: 16px; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
 }
@@ -645,7 +659,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .page-title    { font-size: 17px; }
   .main          { padding: 12px; }
   .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
-  .notes-textarea { min-height: 220px; font-size: 16px; }
+  .notes-textarea { min-height: 130px; font-size: 16px; }
 }
 </style>
 </head>
@@ -864,7 +878,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
             <div class="panel-header"><div class="panel-title">Inbox libre</div></div>
             <div class="notes-body">
               <div class="notes-help">Escribe sin formulario. Patrones opcionales: <strong>[]</strong> pendiente, <strong>@persona</strong> delegado, <strong>#entidad</strong> venture, <strong>!alta</strong> prioridad.</div>
-              <textarea id="notes-inbox" class="notes-textarea" placeholder="[] Llamar a proveedor @hermano #vatio !alta&#10;Idea para campana de fitbase #fitbase"></textarea>
+              <div class="notes-compose">
+                <div class="notes-preview" id="notes-preview"></div>
+                <textarea id="notes-inbox" class="notes-textarea" placeholder="[] Llamar a proveedor @hermano #vatio !alta&#10;Idea para campana de fitbase #fitbase"></textarea>
+              </div>
               <div class="notes-quick">
                 <button type="button" class="quick-chip" onclick="insertIntoInbox('[] ')">Pendiente</button>
                 <button type="button" class="quick-chip" onclick="insertIntoInbox(' hoy')">Hoy</button>
@@ -880,7 +897,6 @@ select.form-input option { background: var(--surface2); color: var(--text); }
                 <button class="btn btn-secondary" onclick="selectSuggestedInboxPreview()">Solo pendientes/hoy</button>
                 <button class="btn btn-secondary" onclick="clearNotesInbox()">Limpiar</button>
               </div>
-              <div class="notes-preview" id="notes-preview"></div>
             </div>
           </div>
         </div>
