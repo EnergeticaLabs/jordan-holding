@@ -1045,6 +1045,7 @@ let notesPreviewData = [];
 let notesTaskLinkMap = {};
 let notesInboxLines = [];
 let activeInboxLineId = null;
+let notesSyncTimers = {};
 const NOTE_PREFIX = '[NOTA] ';
 
 // Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
@@ -1495,8 +1496,10 @@ function handleInboxLineKeydown(e, lineId) {
 function parseInboxLine(lineText) {
   const line = (lineText || '').trim();
   const isCheckboxPending = /^\[(x|\s)?\]/i.test(line);
-  const assignees = [...line.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
-  const entities = [...line.matchAll(/(^|\s)#([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
+  const allAssignees = [...line.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
+  const allEntities = [...line.matchAll(/(^|\s)#([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
+  const assignees = allAssignees.length ? [allAssignees[allAssignees.length - 1]] : [];
+  const entities = allEntities.length ? [allEntities[allEntities.length - 1]] : [];
   const assignee = assignees[0] || null;
   const entity = entities[0] || null;
   const prio = (line.match(/!(urgente|alta|media|baja)/i) || [])[1]?.toLowerCase() || 'media';
@@ -1521,9 +1524,9 @@ function parseInboxLine(lineText) {
     title,
     priority: ['urgente', 'alta', 'media', 'baja'].includes(prio) ? prio : 'media',
     assignee,
-      assignees,
+    assignees,
     entity,
-      entities,
+    entities,
     ventureId: venture?.id || null,
     dueDate: due.dueDate,
     suggestedToday: isCheckboxPending || due.isTodayHint,
@@ -1666,6 +1669,13 @@ async function toggleInboxLineSync(index, checked) {
     }
     notesTaskLinkMap[line.lineId] = { taskId: data.id };
     saveNotesLinkMap();
+    const source = getInboxLineById(line.lineId);
+    if (source?.text) {
+      source.text = normalizeLineSingleOwnerEntity(source.text);
+      saveInboxLines();
+      renderInboxEditor();
+      focusInboxLine(line.lineId);
+    }
     await logActivity('convirtio una linea del inbox en pendiente de hoy');
   } else {
     const link = notesTaskLinkMap[line.lineId];
@@ -2030,5 +2040,76 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
+</body>
+</html>
+  const fecha     = document.getElementById('task-fecha').value;
+  if (!titulo) { alert('Escribe el título de la tarea'); return; }
+
+  const creatorProfileId = await ensureCurrentProfileId();
+  if (!creatorProfileId) {
+    alert('No se encontro tu perfil interno en users. Revisa tu registro en la base de datos.');
+    return;
+  }
+
+  const { error } = await sb.from('tasks').insert({
+    titulo, venture_id: venture||null, prioridad,
+    fecha_limite: fecha||null, estado:'pendiente', creado_por: creatorProfileId
+  });
+  if (!error) {
+    await logActivity('creó una nueva tarea');
+    closeTaskModal(); await loadTasks(); renderTasksPanel(); renderTareasPage();
+  }
+}
+
+async function logActivity(accion) {
+  const { data: p } = await sb.from('users').select('id').eq('auth_id', currentUser.id).single();
+  if (p) { await sb.from('activity_log').insert({ user_id:p.id, accion }); await loadActivity(); }
+}
+
+// ── NAV ──
+function setPage(id) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
+  const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
+  if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
+}
+
+// ── UTILS ──
+function setDate() {
+  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('es-PE',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+}
+function formatDate(d) {
+  if(!d) return '';
+  return new Date(d+'T00:00:00').toLocaleDateString('es-PE',{day:'numeric',month:'short'});
+}
+function timeAgo(ts) {
+  const m = Math.floor((Date.now()-new Date(ts).getTime())/60000);
+  if(m<1) return 'Ahora mismo';
+  if(m<60) return `Hace ${m} min`;
+  const h=Math.floor(m/60);
+  if(h<24) return `Hace ${h}h`;
+  return `Hace ${Math.floor(h/24)} día(s)`;
+}
+
+window.openNotesParserPreview = openNotesParserPreview;
+window.closeNotesParserPreview = closeNotesParserPreview;
+window.clearCompletedNotesToday = clearCompletedNotesToday;
+window.toggleInboxLineSyncById = toggleInboxLineSyncById;
+
+init();
+
+// ── PWA: REGISTRAR SERVICE WORKER ──
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js")
+      .then(reg => console.log("SW registrado:", reg.scope))
+      .catch(err => console.log("SW error:", err));
+  });
+}
+</script>
+</body>
+</html>
 </body>
 </html>
