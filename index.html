@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Virtual Flow Holding — Panel de Control</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#c9860a" id="theme-color-meta">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="VFH">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -806,8 +812,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 </div>
 
 <script>
-const SUPABASE_URL = 'https://xzqiyjczzempnplveeyb.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6cWl5amN6emVtcG5wbHZlZXliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQxNTMsImV4cCI6MjA5NDk1MDE1M30.78nx91F76q8-M7NnS7arg_ueooovE7o63wUWJeK6WbA';
+const SUPABASE_URL = 'SUPABASE_URL_PLACEHOLDER';
+const SUPABASE_KEY = 'SUPABASE_ANON_KEY_PLACEHOLDER';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentUser = null;
@@ -820,6 +826,9 @@ function initTheme() {
   document.documentElement.setAttribute('data-theme', saved);
 }
 function toggleTheme() {
+  const metaTheme = document.getElementById("theme-color-meta");
+  const isDark = document.documentElement.getAttribute("data-theme") === "light";
+  if (metaTheme) metaTheme.setAttribute("content", isDark ? "#0d0d0f" : "#c9860a");
   const current = document.documentElement.getAttribute('data-theme');
   const next = current === 'light' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', next);
@@ -1151,6 +1160,15 @@ function timeAgo(ts) {
 }
 
 init();
+
+// ── PWA: REGISTRAR SERVICE WORKER ──
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js")
+      .then(reg => console.log("SW registrado:", reg.scope))
+      .catch(err => console.log("SW error:", err));
+  });
+}
 </script>
 </body>
 </html>
