@@ -520,6 +520,16 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   margin-bottom: 10px;
 }
 .notes-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.notes-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.quick-chip {
+  font-size: 11px; padding: 4px 8px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface2);
+  color: var(--text2); cursor: pointer;
+}
+.quick-chip:hover { color: var(--text); border-color: var(--border2); }
+.notes-inline-suggestions {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+}
 .notes-textarea {
   width: 100%; min-height: 260px; resize: vertical;
   background: var(--surface2); color: var(--text);
@@ -538,6 +548,14 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-bottom: 1px solid var(--border);
 }
 .notes-preview-item:last-child { border-bottom: none; }
+.notes-preview-row { display: flex; align-items: flex-start; gap: 8px; }
+.notes-preview-check {
+  margin-top: 2px; width: 14px; height: 14px;
+}
+.notes-preview-controls {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px; gap: 8px; flex-wrap: wrap;
+}
 .note-badge {
   display: inline-block; font-size: 10px; padding: 1px 6px;
   border-radius: 8px; background: var(--surface3); color: var(--text2);
@@ -847,8 +865,19 @@ select.form-input option { background: var(--surface2); color: var(--text); }
             <div class="notes-body">
               <div class="notes-help">Escribe sin formulario. Patrones opcionales: <strong>[]</strong> pendiente, <strong>@persona</strong> delegado, <strong>#entidad</strong> venture, <strong>!alta</strong> prioridad.</div>
               <textarea id="notes-inbox" class="notes-textarea" placeholder="[] Llamar a proveedor @hermano #vatio !alta&#10;Idea para campana de fitbase #fitbase"></textarea>
+              <div class="notes-quick">
+                <button type="button" class="quick-chip" onclick="insertIntoInbox('[] ')">Pendiente</button>
+                <button type="button" class="quick-chip" onclick="insertIntoInbox(' hoy')">Hoy</button>
+                <button type="button" class="quick-chip" onclick="insertIntoInbox(' manana')">Mañana</button>
+                <button type="button" class="quick-chip" onclick="insertIntoInbox(' !alta')">Prioridad alta</button>
+                <button type="button" class="quick-chip" onclick="insertIntoInbox(' @')">Delegar</button>
+                <button type="button" class="quick-chip" onclick="insertIntoInbox(' #')">Entidad</button>
+              </div>
+              <div class="notes-inline-suggestions" id="notes-inline-suggestions"></div>
               <div class="notes-actions">
-                <button class="btn btn-primary-sm" onclick="processInboxToToday()">Enviar a hoy</button>
+                <button class="btn btn-primary-sm" onclick="processInboxToToday()">Enviar seleccionadas</button>
+                <button class="btn btn-secondary" onclick="selectAllInboxPreview(true)">Seleccionar todo</button>
+                <button class="btn btn-secondary" onclick="selectSuggestedInboxPreview()">Solo pendientes/hoy</button>
                 <button class="btn btn-secondary" onclick="clearNotesInbox()">Limpiar</button>
               </div>
               <div class="notes-preview" id="notes-preview"></div>
@@ -927,6 +956,9 @@ let currentProfileId = null;
 let venturesData = [];
 let tasksData    = [];
 let notesTodayData = [];
+let usersData = [];
+let notesPreviewData = [];
+let notesPreviewSelection = [];
 const NOTE_PREFIX = '[NOTA] ';
 
 // Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
@@ -1028,11 +1060,16 @@ document.addEventListener('click', e => {
 async function loadApp() {
   document.getElementById('app').classList.add('visible');
   await loadUserProfile();
-  await Promise.all([loadVentures(), loadTasks(), loadActivity()]);
+  await Promise.all([loadVentures(), loadTasks(), loadActivity(), loadUsers()]);
   await loadNotesToday();
   bindNotesInbox();
   renderDashboard();
   setDate();
+}
+
+async function loadUsers() {
+  const { data } = await sb.from('users').select('id,nombre').limit(30);
+  usersData = data || [];
 }
 
 async function loadUserProfile() {
@@ -1230,7 +1267,55 @@ function bindNotesInbox() {
   area.addEventListener('input', () => {
     localStorage.setItem(getNotesDraftKey(), area.value);
     renderInboxPreview(area.value);
+    updateInlineSuggestions();
   });
+  area.addEventListener('click', updateInlineSuggestions);
+  area.addEventListener('keyup', updateInlineSuggestions);
+}
+
+function normalizeText(value) {
+  return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function getNextWeekdayDate(targetDay) {
+  const now = new Date();
+  const current = now.getDay();
+  let diff = targetDay - current;
+  if (diff <= 0) diff += 7;
+  const next = new Date(now);
+  next.setDate(now.getDate() + diff);
+  return next.toISOString().slice(0, 10);
+}
+
+function parseNaturalDueDate(line) {
+  const plain = normalizeText(line);
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  if (/(^|\s)hoy(\s|$)/.test(plain)) {
+    return { dueDate: today.toISOString().slice(0, 10), isTodayHint: true };
+  }
+  if (/(^|\s)manana(\s|$)/.test(plain)) {
+    return { dueDate: tomorrow.toISOString().slice(0, 10), isTodayHint: false };
+  }
+
+  const weekdays = {
+    domingo: 0,
+    lunes: 1,
+    martes: 2,
+    miercoles: 3,
+    jueves: 4,
+    viernes: 5,
+    sabado: 6
+  };
+  for (const [name, dayIdx] of Object.entries(weekdays)) {
+    const regex = new RegExp(`(^|\\s)${name}(\\s|$)`);
+    if (regex.test(plain)) {
+      return { dueDate: getNextWeekdayDate(dayIdx), isTodayHint: false };
+    }
+  }
+  return { dueDate: today.toISOString().slice(0, 10), isTodayHint: false };
 }
 
 function parseInboxLines(rawText) {
@@ -1240,15 +1325,18 @@ function parseInboxLines(rawText) {
     .filter(Boolean);
 
   return lines.map((line) => {
+    const isCheckboxPending = /^\[(x|\s)?\]/i.test(line);
     const assignee = (line.match(/(^|\s)@([a-zA-Z0-9_-]+)/) || [])[2] || null;
     const entity = (line.match(/(^|\s)#([a-zA-Z0-9_-]+)/) || [])[2] || null;
     const prio = (line.match(/!(urgente|alta|media|baja)/i) || [])[1]?.toLowerCase() || 'media';
+    const due = parseNaturalDueDate(line);
 
     let title = line
       .replace(/^\[(x|\s)?\]\s*/i, '')
       .replace(/(^|\s)@[a-zA-Z0-9_-]+/g, ' ')
       .replace(/(^|\s)#[a-zA-Z0-9_-]+/g, ' ')
       .replace(/!(urgente|alta|media|baja)/gi, ' ')
+      .replace(/(^|\s)(hoy|manana|mañana|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)(\s|$)/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -1263,32 +1351,66 @@ function parseInboxLines(rawText) {
       priority: ['urgente', 'alta', 'media', 'baja'].includes(prio) ? prio : 'media',
       assignee,
       entity,
-      ventureId: venture?.id || null
+      ventureId: venture?.id || null,
+      dueDate: due.dueDate,
+      suggestedToday: isCheckboxPending || due.isTodayHint,
+      rawLine: line
     };
   });
 }
 
 function renderInboxPreview(text) {
   const preview = document.getElementById('notes-preview');
-  const items = parseInboxLines(text).slice(0, 6);
+  const items = parseInboxLines(text);
+  notesPreviewData = items;
+  if (notesPreviewSelection.length !== items.length) {
+    notesPreviewSelection = items.map(i => i.suggestedToday);
+  }
   if (!items.length) {
     preview.innerHTML = `<div class="notes-preview-title">Vista previa del parser</div><div class="empty-sub">Escribe una linea para ver como se convertira</div>`;
     return;
   }
-  preview.innerHTML = `<div class="notes-preview-title">Vista previa del parser</div>${items.map(i => `
-    <div class="notes-preview-item">${escapeHtml(i.title)}
-      <span class="note-badge">${i.priority}</span>
-      ${i.assignee ? `<span class="note-badge">@${escapeHtml(i.assignee)}</span>` : ''}
-      ${i.entity ? `<span class="note-badge">#${escapeHtml(i.entity)}</span>` : ''}
+  const selectedCount = notesPreviewSelection.filter(Boolean).length;
+  preview.innerHTML = `<div class="notes-preview-title">Vista previa del parser</div>
+    <div class="notes-preview-controls">
+      <span class="empty-sub">Se enviaran ${selectedCount} de ${items.length} linea(s)</span>
     </div>
-  `).join('')}`;
+    ${items.map((i, idx) => `
+      <div class="notes-preview-item">
+        <div class="notes-preview-row">
+          <input type="checkbox" class="notes-preview-check" ${notesPreviewSelection[idx] ? 'checked' : ''} onchange="toggleInboxPreviewSelection(${idx}, this.checked)">
+          <div>
+            ${escapeHtml(i.title)}
+            <span class="note-badge">${i.priority}</span>
+            ${i.assignee ? `<span class="note-badge">@${escapeHtml(i.assignee)}</span>` : ''}
+            ${i.entity ? `<span class="note-badge">#${escapeHtml(i.entity)}</span>` : ''}
+            ${i.dueDate ? `<span class="note-badge">${escapeHtml(i.dueDate)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('')}`;
+}
+
+function toggleInboxPreviewSelection(index, checked) {
+  notesPreviewSelection[index] = checked;
+  renderInboxPreview(document.getElementById('notes-inbox').value);
+}
+
+function selectAllInboxPreview(checked) {
+  notesPreviewSelection = notesPreviewData.map(() => checked);
+  renderInboxPreview(document.getElementById('notes-inbox').value);
+}
+
+function selectSuggestedInboxPreview() {
+  notesPreviewSelection = notesPreviewData.map(i => i.suggestedToday);
+  renderInboxPreview(document.getElementById('notes-inbox').value);
 }
 
 async function processInboxToToday() {
   const area = document.getElementById('notes-inbox');
-  const lines = parseInboxLines(area.value);
+  const lines = parseInboxLines(area.value).filter((_, idx) => notesPreviewSelection[idx]);
   if (!lines.length) {
-    alert('Escribe al menos una linea en el Inbox.');
+    alert('Selecciona al menos una linea para enviar.');
     return;
   }
 
@@ -1319,7 +1441,7 @@ async function processInboxToToday() {
       titulo: `${NOTE_PREFIX}${item.title}${tags ? ` ${tags}` : ''}`,
       venture_id: item.ventureId,
       prioridad: item.priority,
-      fecha_limite: today,
+      fecha_limite: item.dueDate || today,
       estado: 'pendiente',
       creado_por: creatorProfileId
     };
@@ -1360,9 +1482,16 @@ async function processInboxToToday() {
   }
 
   await logActivity('convirtio notas del inbox en pendientes de hoy');
-  area.value = '';
+  const remaining = parseInboxLines(area.value).filter((_, idx) => !notesPreviewSelection[idx]);
+  area.value = remaining.map(i => i.rawLine).join('\n');
+  notesPreviewSelection = [];
   localStorage.removeItem(getNotesDraftKey());
-  renderInboxPreview('');
+  if (area.value.trim()) {
+    localStorage.setItem(getNotesDraftKey(), area.value);
+    renderInboxPreview(area.value);
+  } else {
+    renderInboxPreview('');
+  }
   await loadTasks();
   await loadNotesToday();
   renderTasksPanel();
@@ -1372,8 +1501,80 @@ async function processInboxToToday() {
 function clearNotesInbox() {
   const area = document.getElementById('notes-inbox');
   area.value = '';
+  notesPreviewSelection = [];
   localStorage.removeItem(getNotesDraftKey());
   renderInboxPreview('');
+}
+
+function insertIntoInbox(textToInsert) {
+  const area = document.getElementById('notes-inbox');
+  const start = area.selectionStart;
+  const end = area.selectionEnd;
+  const value = area.value;
+  area.value = value.slice(0, start) + textToInsert + value.slice(end);
+  const nextPos = start + textToInsert.length;
+  area.selectionStart = nextPos;
+  area.selectionEnd = nextPos;
+  area.focus();
+  localStorage.setItem(getNotesDraftKey(), area.value);
+  renderInboxPreview(area.value);
+  updateInlineSuggestions();
+}
+
+function updateInlineSuggestions() {
+  const container = document.getElementById('notes-inline-suggestions');
+  const area = document.getElementById('notes-inbox');
+  if (!container || !area) return;
+
+  const cursor = area.selectionStart;
+  const beforeCursor = area.value.slice(0, cursor);
+  const match = beforeCursor.match(/(^|\s)([@#])([^\s@#]*)$/);
+  if (!match) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const type = match[2];
+  const term = normalizeText(match[3]);
+  let suggestions = [];
+
+  if (type === '@') {
+    suggestions = usersData
+      .map(u => ({ label: u.nombre, value: normalizeText(u.nombre).replace(/\s+/g, '') }))
+      .filter(u => !term || u.value.includes(term))
+      .slice(0, 6)
+      .map(u => ({ display: `@${u.value}`, insert: `@${u.value}` }));
+  } else {
+    suggestions = venturesData
+      .map(v => ({ label: v.nombre, value: normalizeText(v.nombre).replace(/\s+/g, '') }))
+      .filter(v => !term || v.value.includes(term))
+      .slice(0, 6)
+      .map(v => ({ display: `#${v.value}`, insert: `#${v.value}` }));
+  }
+
+  if (!suggestions.length) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = suggestions.map(s => `<button type="button" class="quick-chip" onclick='applyInlineSuggestion(${JSON.stringify(s.insert)})'>${escapeHtml(s.display)}</button>`).join('');
+}
+
+function applyInlineSuggestion(insertValue) {
+  const area = document.getElementById('notes-inbox');
+  const cursor = area.selectionStart;
+  const value = area.value;
+  let start = cursor - 1;
+  while (start >= 0 && !/\s/.test(value[start])) start -= 1;
+  const tokenStart = start + 1;
+  area.value = value.slice(0, tokenStart) + insertValue + value.slice(cursor);
+  const nextPos = tokenStart + insertValue.length;
+  area.selectionStart = nextPos;
+  area.selectionEnd = nextPos;
+  area.focus();
+  localStorage.setItem(getNotesDraftKey(), area.value);
+  renderInboxPreview(area.value);
+  updateInlineSuggestions();
 }
 
 async function loadNotesToday() {
