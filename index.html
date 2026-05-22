@@ -557,7 +557,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-line:last-child { border-bottom: none; }
 .notes-line-input {
   width: 100%; border: none; background: transparent;
-  color: var(--text); font-size: 16px; outline: none;
+  color: var(--text); font-size: 14px; outline: none;
   font-family: 'Inter', sans-serif; resize: none;
   overflow: hidden; line-height: 1.35; min-height: 18px;
   white-space: pre-wrap; word-break: break-word;
@@ -634,6 +634,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-radius: 8px; background: var(--surface3); color: var(--text2);
   margin-left: 4px;
 }
+.note-badge-priority { background: var(--amber-bg); color: var(--amber); }
+.note-badge-assignee { background: var(--blue-bg); color: var(--blue); }
+.note-badge-entity { background: var(--green-bg); color: var(--green); }
+.note-badge-date { background: rgba(168, 85, 247, 0.12); color: #7c3aed; }
 
 /* ══ PAGES ══ */
 .page { display: none; }
@@ -782,10 +786,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     <div class="topbar-logo">VFH /</div>
     <div class="topbar-sep"></div>
     <div class="topbar-nav">
-      <button class="nav-btn active" onclick="setPage('dashboard')">Dashboard</button>
+      <button class="nav-btn" onclick="setPage('dashboard')">Dashboard</button>
       <button class="nav-btn" onclick="setPage('ventures')">Ventures</button>
       <button class="nav-btn" onclick="setPage('tareas')">Tareas</button>
-      <button class="nav-btn" onclick="setPage('notas')">Notas</button>
+      <button class="nav-btn active" onclick="setPage('notas')">Notas</button>
       <button class="nav-btn" onclick="setPage('equipo')">Equipo</button>
     </div>
     <div class="topbar-right">
@@ -816,7 +820,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     <div class="sidebar" id="sidebar">
       <div class="sidebar-section">
         <div class="sidebar-label">Principal</div>
-        <div class="sidebar-item active" onclick="setPage('dashboard');closeSidebar()">
+        <div class="sidebar-item" onclick="setPage('dashboard');closeSidebar()">
           <span class="sidebar-icon">⬡</span>Dashboard
         </div>
         <div class="sidebar-item" onclick="setPage('ventures');closeSidebar()">
@@ -827,7 +831,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
           <span class="sidebar-icon">✓</span>Tareas
           <span class="sidebar-badge" id="sb-tareas">—</span>
         </div>
-        <div class="sidebar-item" onclick="setPage('notas');closeSidebar()">
+        <div class="sidebar-item active" onclick="setPage('notas');closeSidebar()">
           <span class="sidebar-icon">✎</span>Notas
         </div>
         <div class="sidebar-item" onclick="setPage('equipo');closeSidebar()">
@@ -844,7 +848,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     <div class="main">
 
       <!-- DASHBOARD -->
-      <div class="page active" id="page-dashboard">
+      <div class="page" id="page-dashboard">
         <div class="page-header">
           <div>
             <div class="page-title">Dashboard</div>
@@ -921,7 +925,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       </div>
 
       <!-- NOTAS -->
-      <div class="page" id="page-notas">
+      <div class="page active" id="page-notas">
         <div class="page-header">
           <div>
             <div class="page-title">Notas</div>
@@ -1740,10 +1744,10 @@ function renderInboxPreview() {
           <input type="checkbox" class="notes-preview-check" ${notesTaskLinkMap[i.lineId] ? 'checked' : ''} onchange="toggleInboxLineSync(${idx}, this.checked)">
           <div>
             ${escapeHtml(i.title)}
-            <span class="note-badge">${i.priority}</span>
-            ${i.assignees.map(a => `<span class="note-badge">@${escapeHtml(a)}</span>`).join('')}
-            ${i.entities.map(e => `<span class="note-badge">#${escapeHtml(e)}</span>`).join('')}
-            ${i.dueDate ? `<span class="note-badge">${escapeHtml(i.dueDate)}</span>` : ''}
+            <span class="note-badge note-badge-priority">${i.priority}</span>
+            ${i.assignees.map(a => `<span class="note-badge note-badge-assignee">@${escapeHtml(a)}</span>`).join('')}
+            ${i.entities.map(e => `<span class="note-badge note-badge-entity">#${escapeHtml(e)}</span>`).join('')}
+            ${i.dueDate ? `<span class="note-badge note-badge-date">${escapeHtml(i.dueDate)}</span>` : ''}
           </div>
         </div>
       </div>
@@ -2051,8 +2055,8 @@ function renderNotesToday() {
         <div class="task-check ${t.estado === 'completado' ? 'done' : ''}" onclick="toggleTask('${t.id}',this)">${t.estado === 'completado' ? '✓' : ''}</div>
         <div class="notes-today-main">
           <span class="notes-title-inline ${t.estado === 'completado' ? 'done-text' : ''}">${escapeHtml(meta.cleanTitle)}</span>
-          ${meta.assignees.map(a => `<span class="note-badge">@${escapeHtml(a)}</span>`).join('')}
-          ${meta.entities.map(e => `<span class="note-badge">#${escapeHtml(e)}</span>`).join('')}
+          ${meta.assignees.map(a => `<span class="note-badge note-badge-assignee">@${escapeHtml(a)}</span>`).join('')}
+          ${meta.entities.map(e => `<span class="note-badge note-badge-entity">#${escapeHtml(e)}</span>`).join('')}
         </div>
         <div class="notes-priority-col">${escapeHtml(t.prioridad || 'media')}</div>
       </div>
