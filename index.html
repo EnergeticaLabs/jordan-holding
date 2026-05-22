@@ -922,6 +922,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 let currentUser = null;
+let currentProfileId = null;
 let venturesData = [];
 let tasksData    = [];
 let notesTodayData = [];
@@ -933,6 +934,7 @@ sb.auth.onAuthStateChange((event, session) => {
     currentUser = session.user;
   } else if (event === 'SIGNED_OUT') {
     currentUser = null;
+    currentProfileId = null;
   }
 });
 
@@ -1035,10 +1037,22 @@ async function loadApp() {
 async function loadUserProfile() {
   const { data } = await sb.from('users').select('*').eq('auth_id', currentUser.id).single();
   const profile = data || { nombre: currentUser.email.split('@')[0], rol: 'owner' };
+  currentProfileId = profile.id || null;
   const rolLabels = { owner:'Fundador', manager:'Supervisor', executor:'Ejecutor' };
   document.getElementById('top-name').textContent   = profile.nombre;
   document.getElementById('top-role').textContent   = rolLabels[profile.rol] || profile.rol;
   document.getElementById('top-avatar').textContent = profile.nombre.slice(0,2).toUpperCase();
+}
+
+async function ensureCurrentProfileId() {
+  if (currentProfileId) return currentProfileId;
+  if (!currentUser?.id) return null;
+  const { data, error } = await sb.from('users').select('id').eq('auth_id', currentUser.id).single();
+  if (!error && data?.id) {
+    currentProfileId = data.id;
+    return currentProfileId;
+  }
+  return null;
 }
 
 async function loadVentures() {
@@ -1288,6 +1302,12 @@ async function processInboxToToday() {
     return;
   }
 
+  const creatorProfileId = await ensureCurrentProfileId();
+  if (!creatorProfileId) {
+    alert('No se encontro tu perfil interno en users. Revisa tu registro en la base de datos.');
+    return;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const rows = lines.map(item => {
     const tags = [
@@ -1300,7 +1320,7 @@ async function processInboxToToday() {
       prioridad: item.priority,
       fecha_limite: today,
       estado: 'pendiente',
-      creado_por: currentUser.id
+      creado_por: creatorProfileId
     };
   });
 
@@ -1448,9 +1468,16 @@ async function saveTask() {
   const prioridad = document.getElementById('task-prioridad').value;
   const fecha     = document.getElementById('task-fecha').value;
   if (!titulo) { alert('Escribe el título de la tarea'); return; }
+
+  const creatorProfileId = await ensureCurrentProfileId();
+  if (!creatorProfileId) {
+    alert('No se encontro tu perfil interno en users. Revisa tu registro en la base de datos.');
+    return;
+  }
+
   const { error } = await sb.from('tasks').insert({
     titulo, venture_id: venture||null, prioridad,
-    fecha_limite: fecha||null, estado:'pendiente', creado_por: currentUser.id
+    fecha_limite: fecha||null, estado:'pendiente', creado_por: creatorProfileId
   });
   if (!error) {
     await logActivity('creó una nueva tarea');
