@@ -1446,19 +1446,7 @@ function pickLastToken(text, prefix) {
 }
 
 function normalizeLineSingleOwnerEntity(text) {
-  const raw = String(text || '');
-  const lastAssignee = pickLastToken(raw, '@');
-  const lastEntity = pickLastToken(raw, '#');
-
-  let clean = raw
-    .replace(/(^|\s)@[a-zA-Z0-9_-]+/g, ' ')
-    .replace(/(^|\s)#[a-zA-Z0-9_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (lastAssignee) clean += ` @${lastAssignee}`;
-  if (lastEntity) clean += ` #${lastEntity}`;
-  return clean.trim();
+  return String(text || '');
 }
 
 function scheduleSyncLinkedInboxLine(lineId) {
@@ -1576,8 +1564,8 @@ function parseInboxLine(lineText) {
   const isCheckboxPending = /^\[(x|\s)?\]/i.test(line);
   const allAssignees = [...line.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
   const allEntities = [...line.matchAll(/(^|\s)#([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
-  const assignees = allAssignees.length ? [allAssignees[allAssignees.length - 1]] : [];
-  const entities = allEntities.length ? [allEntities[allEntities.length - 1]] : [];
+  const assignees = allAssignees;
+  const entities = allEntities;
   const assignee = assignees[0] || null;
   const entity = entities[0] || null;
   const prio = (line.match(/!(urgente|alta|media|baja)/i) || [])[1]?.toLowerCase() || 'media';
@@ -1594,8 +1582,8 @@ function parseInboxLine(lineText) {
 
   if (!title) title = line;
 
-  const venture = entity
-    ? venturesData.find(v => v.nombre.toLowerCase().includes(entity.toLowerCase()))
+  const venture = entities.length === 1
+    ? venturesData.find(v => v.nombre.toLowerCase().includes(entities[0].toLowerCase()))
     : null;
 
   return {
