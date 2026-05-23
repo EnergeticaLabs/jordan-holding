@@ -1432,7 +1432,7 @@ function renderInboxEditor() {
           data-line-id="${line.id}"
           placeholder="Escribe una nota..."
           onfocus="setActiveInboxLine('${line.id}'); setInboxFocusMode(true); ensureInboxComposerVisible();"
-          oninput="updateInboxLine('${line.id}', this.value); autosizeNoteTextarea(this); ensureInboxComposerVisible();"
+          oninput="updateInboxLine('${line.id}', this.value); autosizeNoteTextarea(this);"
           onblur="handleInboxLineBlur()"
           onkeydown="handleInboxLineKeydown(event, '${line.id}')"
           rows="1"
@@ -1474,6 +1474,7 @@ function renderInboxEditor() {
 }
 
 let ensureInboxVisibilityFrame = null;
+let lastInboxVisibilityAdjust = 0;
 function setInboxFocusMode(isFocused) {
   document.body.classList.toggle('inbox-focus', !!isFocused);
 }
@@ -1512,7 +1513,18 @@ function ensureInboxComposerVisible() {
       delta = rect.bottom - (viewportBottom - safeBottom);
     }
 
-    if (delta !== 0) window.scrollBy({ top: delta, behavior: 'auto' });
+    if (Math.abs(delta) < 10) return;
+
+    const now = Date.now();
+    if (now - lastInboxVisibilityAdjust < 180) return;
+    lastInboxVisibilityAdjust = now;
+    window.scrollBy({ top: delta, behavior: 'auto' });
+  });
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    if (document.body.classList.contains('inbox-focus')) ensureInboxComposerVisible();
   });
 }
 
