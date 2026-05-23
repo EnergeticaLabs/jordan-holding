@@ -1564,6 +1564,19 @@ function normalizeLineSingleOwnerEntity(text) {
   return String(text || '');
 }
 
+function getVentureNameById(ventureId) {
+  const venture = venturesData.find(v => String(v.id) === String(ventureId));
+  return venture?.nombre || null;
+}
+
+async function logInboxEntityAction(ventureId, source) {
+  if (!ventureId) return;
+  const ventureName = getVentureNameById(ventureId);
+  if (!ventureName) return;
+  const sourceText = source === 'sync' ? 'actualizo' : 'creo';
+  await logActivity(`${sourceText} una nota vinculada a ${ventureName}`);
+}
+
 function scheduleSyncLinkedInboxLine(lineId) {
   const link = notesTaskLinkMap[lineId];
   if (!link?.taskId) return;
@@ -1578,6 +1591,7 @@ async function syncLinkedInboxLine(lineId) {
   if (!link?.taskId) return;
   const line = getInboxLineById(lineId);
   if (!line) return;
+  const existingTask = notesTodayData.find(t => t.id === link.taskId) || null;
 
   const normalized = normalizeLineSingleOwnerEntity(line.text);
   if (normalized !== line.text) {
@@ -1603,6 +1617,9 @@ async function syncLinkedInboxLine(lineId) {
 
   const { error } = await sb.from('tasks').update(payload).eq('id', link.taskId);
   if (!error) {
+    if (parsed.ventureId && String(existingTask?.venture_id || '') !== String(parsed.ventureId)) {
+      await logInboxEntityAction(parsed.ventureId, 'sync');
+    }
     await loadTasks();
     await loadNotesToday();
     renderTasksPanel();
@@ -1761,24 +1778,6 @@ function parseNaturalDueDate(line) {
   return { dueDate: today.toISOString().slice(0, 10), isTodayHint: false };
 }
 
-function buildEntityActivityMessage(parsedLine) {
-  if (!parsedLine) return 'convirtio una linea del inbox en pendiente de hoy';
-  const venture = parsedLine.ventureId
-    ? venturesData.find(v => v.id === parsedLine.ventureId)
-    : null;
-
-  if (venture?.nombre) {
-    return `registro una nota operativa para ${venture.nombre}`;
-  }
-
-  if (parsedLine.entities?.length) {
-    const tags = parsedLine.entities.map(e => `#${e}`).join(' ');
-    return `registro una nota operativa con etiquetas ${tags}`;
-  }
-
-  return 'convirtio una linea del inbox en pendiente de hoy';
-}
-
 function parseInboxLines(rawText) {
   if (rawText === undefined) {
     return notesInboxLines
@@ -1868,7 +1867,8 @@ async function toggleInboxLineSync(index, checked) {
     }
     notesTaskLinkMap[line.lineId] = { taskId: data.id };
     saveNotesLinkMap();
-    await logActivity(buildEntityActivityMessage(line));
+    await logActivity('convirtio una linea del inbox en pendiente de hoy');
+    await logInboxEntityAction(line.ventureId, 'create');
   } else {
     const link = notesTaskLinkMap[line.lineId];
     if (!link?.taskId) {
