@@ -1,14 +1,13 @@
-const CACHE_NAME = 'vfh-v1';
-const STATIC_ASSETS = [
+const CACHE_NAME = 'vfh-v3';
+const APP_SHELL_CACHE = [
   '/',
-  '/index.html',
   '/manifest.json'
 ];
 
 // Instalación — cachea assets estáticos
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL_CACHE))
   );
   self.skipWaiting();
 });
@@ -23,6 +22,10 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
+function isNavigationRequest(request) {
+  return request.mode === 'navigate' || request.destination === 'document';
+}
+
 // Fetch — network first, cache fallback
 self.addEventListener('fetch', event => {
   // Solo interceptar GET
@@ -31,10 +34,29 @@ self.addEventListener('fetch', event => {
   // No interceptar requests de Supabase (siempre necesitan red)
   if (event.request.url.includes('supabase.co')) return;
 
+  // Para navegación/documento: siempre intentar red para evitar HTML obsoleto.
+  if (isNavigationRequest(event.request)) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' })
+        .then(response => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put('/index.html', clone));
+          }
+          return response;
+        })
+        .catch(async () => {
+          const cached = await caches.match('/index.html');
+          return cached || caches.match('/');
+        })
+    );
+    return;
+  }
+
+  // Para assets: red primero, fallback caché.
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        // Guardar en cache si es válido
         if (response && response.status === 200) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));

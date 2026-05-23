@@ -326,23 +326,28 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 14px; margin-bottom: 24px;
+  gap: 8px; margin-bottom: 14px;
+}
+.dashboard-kpi-grid {
+  gap: 6px;
+  margin-bottom: 12px;
 }
 .kpi-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 18px;
+  border-radius: 8px; padding: 8px 9px;
   box-shadow: var(--shadow);
 }
+.dashboard-kpi-grid .kpi-card { padding: 7px 8px; }
 .kpi-label {
-  font-size: 11px; font-weight: 500; letter-spacing: 0.05em;
-  text-transform: uppercase; color: var(--text3); margin-bottom: 10px;
+  font-size: 10px; font-weight: 500; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text3); margin-bottom: 4px;
 }
 .kpi-value {
-  font-size: 26px; font-weight: 700; color: var(--text);
-  font-family: 'JetBrains Mono', monospace; line-height: 1; margin-bottom: 6px;
+  font-size: 17px; font-weight: 700; color: var(--text);
+  font-family: 'JetBrains Mono', monospace; line-height: 1; margin-bottom: 2px;
 }
 .kpi-value span { color: var(--gold); }
-.kpi-delta { font-size: 11px; color: var(--text3); }
+.kpi-delta { font-size: 9px; color: var(--text3); }
 .kpi-delta.up   { color: var(--green); }
 .kpi-delta.warn { color: var(--amber); }
 
@@ -354,9 +359,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .section-title-sm { font-size: 13px; font-weight: 600; color: var(--text); }
 .ventures-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px; margin-bottom: 14px;
 }
+.dashboard-ventures-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .venture-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 10px; padding: 9px; cursor: pointer;
@@ -799,8 +805,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .sidebar-overlay.open { display: block; }
 
   .main { padding: 16px; }
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 7px; }
+  .dashboard-kpi-grid { gap: 5px; }
   .ventures-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .dashboard-ventures-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .bottom-grid { grid-template-columns: 1fr; gap: 10px; }
   .notes-grid { grid-template-columns: 1fr; }
   .ventures-detail-grid { grid-template-columns: 1fr; }
@@ -820,8 +828,15 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 
 /* Small mobile (≤ 480px) */
 @media (max-width: 480px) {
-  .kpi-grid      { grid-template-columns: repeat(2, 1fr); }
-  .ventures-grid { grid-template-columns: 1fr; }
+  .kpi-grid      { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .dashboard-kpi-grid { gap: 4px; }
+  .kpi-card      { padding: 7px 8px; }
+  .dashboard-kpi-grid .kpi-card { padding: 6px 7px; }
+  .kpi-label     { font-size: 9px; margin-bottom: 3px; }
+  .kpi-value     { font-size: 14px; }
+  .kpi-delta     { font-size: 8px; }
+  .ventures-grid { grid-template-columns: repeat(2, 1fr); }
+  .dashboard-ventures-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .metrics-row   { flex-direction: row; }
   .page-title    { font-size: 17px; }
   .main          { padding: 12px; }
@@ -961,10 +976,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
             <div class="page-sub" id="dash-date"></div>
           </div>
           <div class="header-actions">
-            <button class="btn btn-primary-sm" onclick="openTaskModal()">+ Nueva tarea</button>
+            <button class="btn btn-primary-sm" onclick="openDashboardQuickTask()">+ Nueva tarea</button>
           </div>
         </div>
-        <div class="kpi-grid">
+        <div class="kpi-grid dashboard-kpi-grid">
           <div class="kpi-card">
             <div class="kpi-label">Ventures</div>
             <div class="kpi-value" id="kpi-ventures">—</div>
@@ -989,7 +1004,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <div class="section-header">
           <div class="section-title-sm">Estado de Ventures</div>
         </div>
-        <div class="ventures-grid" id="ventures-grid"></div>
+        <div class="ventures-grid dashboard-ventures-grid" id="ventures-grid"></div>
         <div class="bottom-grid">
           <div class="panel">
             <div class="panel-header">
@@ -2391,6 +2406,38 @@ function openTaskModal() {
   document.getElementById('task-modal').style.display='flex';
   document.getElementById('task-titulo').focus();
 }
+
+function openDashboardQuickTask() {
+  setPage('notas');
+
+  if (!notesInboxLines.length) {
+    notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
+  }
+
+  let targetLine = getInboxLineById(activeInboxLineId) || notesInboxLines[0];
+  if (!targetLine) return;
+
+  if (String(targetLine.text || '').trim()) {
+    const nextLine = { id: crypto.randomUUID(), text: '[] ' };
+    const idx = notesInboxLines.findIndex(line => line.id === targetLine.id);
+    if (idx >= 0) {
+      notesInboxLines.splice(idx + 1, 0, nextLine);
+    } else {
+      notesInboxLines.push(nextLine);
+    }
+    targetLine = nextLine;
+  } else {
+    targetLine.text = '[] ';
+  }
+
+  activeInboxLineId = targetLine.id;
+  saveInboxLines();
+  renderInboxEditor(targetLine.id, { start: targetLine.text.length, end: targetLine.text.length });
+  renderInboxPreview();
+  setInboxFocusMode(true);
+  ensureInboxComposerVisible();
+}
+
 function closeTaskModal(e) {
   if (!e || e.target===document.getElementById('task-modal')) {
     document.getElementById('task-modal').style.display='none';
@@ -2471,7 +2518,7 @@ init();
 // ── PWA: REGISTRAR SERVICE WORKER ──
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
+    navigator.serviceWorker.register("/sw.js?v=20260523-2")
       .then(reg => console.log("SW registrado:", reg.scope))
       .catch(err => console.log("SW error:", err));
   });
