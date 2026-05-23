@@ -676,43 +676,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   background: var(--gold-bg);
   color: var(--gold-dim);
 }
-.venture-tabs {
-  display: flex;
-  gap: 6px;
-  margin: 10px 0 0;
-  flex-wrap: wrap;
-}
-.venture-tab {
-  font-size: 10px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  cursor: pointer;
-}
-.venture-tab.active {
-  border-color: var(--gold-dim);
-  color: var(--gold-dim);
-  background: var(--gold-bg);
-}
 .venture-section {
   margin-top: 12px;
 }
-.venture-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-.venture-summary-card {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface2);
-  padding: 10px;
-  text-align: center;
-}
-.venture-summary-label { font-size: 9px; color: var(--text3); margin-bottom: 3px; }
-.venture-summary-value { font-size: 14px; color: var(--text); font-family: 'JetBrains Mono', monospace; }
 .venture-tasks-list {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -736,20 +702,49 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   display: flex; align-items: center; justify-content: space-between;
   flex-wrap: wrap; gap: 10px;
 }
-.venture-detail-body { padding: 12px 14px; }
-.metrics-detail-grid {
-  display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 14px;
+.venture-header-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
-.metric-detail-card {
-  background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 10px; text-align: center;
+.venture-header-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  justify-content: flex-end;
 }
-.metric-detail-value {
+.venture-header-metrics {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.venture-metric-chip {
+  min-width: 84px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface2);
+  padding: 4px 6px;
+  text-align: right;
+}
+.venture-metric-chip-value {
+  font-size: 11px;
+  color: var(--text);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 16px; font-weight: 600; color: var(--text);
 }
-.metric-detail-label { font-size: 10px; color: var(--text2); margin-top: 4px; }
-.metric-detail-unit  { font-size: 9px; color: var(--text3); }
+.venture-metric-chip-label {
+  font-size: 9px;
+  color: var(--text3);
+  margin-top: 1px;
+}
+.btn-dashboard-back {
+  padding: 5px 9px;
+  font-size: 10px;
+}
+.venture-detail-body { padding: 12px 14px; }
 .venture-detail-card.is-compact .venture-detail-body {
   padding-top: 10px;
 }
@@ -817,7 +812,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .bottom-grid { grid-template-columns: 1fr; gap: 10px; }
   .notes-grid { grid-template-columns: 1fr; }
   .ventures-detail-grid { grid-template-columns: 1fr; }
-  .venture-summary-grid { grid-template-columns: 1fr; }
+  .venture-header-side { margin-left: 0; justify-content: flex-start; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
   .notes-line-input { font-size: 12px; }
@@ -827,7 +822,6 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     max-height: 280px;
     overflow: auto;
   }
-  .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
 }
 
@@ -848,7 +842,6 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .metrics-row   { flex-direction: row; }
   .page-title    { font-size: 17px; }
   .main          { padding: 12px; }
-  .metrics-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .notes-editor { min-height: 260px; }
   body.inbox-focus .notes-editor {
     min-height: 180px;
@@ -1195,7 +1188,6 @@ let notesInboxLines = [];
 let activeInboxLineId = null;
 let notesSyncTimers = {};
 let selectedVentureId = null;
-let selectedVentureTab = 'resumen';
 const NOTE_PREFIX = '[NOTA] ';
 
 // Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
@@ -1427,16 +1419,8 @@ function renderDashboard() {
 }
 
 function openVentureDetails(ventureId) {
-  if (ventureId && String(ventureId) !== String(selectedVentureId)) {
-    selectedVentureTab = 'resumen';
-  }
   selectedVentureId = ventureId || null;
   setPage('ventures');
-  renderVenturesDetail();
-}
-
-function setVentureTab(tab) {
-  selectedVentureTab = tab;
   renderVenturesDetail();
 }
 
@@ -1482,40 +1466,9 @@ function renderVenturesDetail() {
   const selected = venturesData.find(v => String(v.id) === String(selectedVentureId)) || venturesData[0];
   const selectedProgress = getVentureProgress(selected);
   const metrics = (selected.venture_metrics || []).sort((a, b) => a.orden - b.orden);
+  const headerMetrics = metrics.slice(0, 3);
   const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[selected.estado] || selected.estado;
   const ventureTasks = tasksData.filter(t => String(t.venture_id || '') === String(selected.id) || taskMatchesVentureTag(t, selected));
-
-  const resumenHtml = `
-    <div class="venture-section">
-      <div class="venture-summary-grid">
-        <div class="venture-summary-card">
-          <div class="venture-summary-label">Avance</div>
-          <div class="venture-summary-value">${selectedProgress}%</div>
-        </div>
-        <div class="venture-summary-card">
-          <div class="venture-summary-label">Pendientes</div>
-          <div class="venture-summary-value">${ventureTasks.length}</div>
-        </div>
-        <div class="venture-summary-card">
-          <div class="venture-summary-label">Estado</div>
-          <div class="venture-summary-value">${escapeHtml(estadoLabel)}</div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  const metricsHtml = `
-    <div class="venture-section">
-      <div class="metrics-detail-grid">
-        ${metrics.map(m=>`
-          <div class="metric-detail-card">
-            <div class="metric-detail-value">${m.valor}</div>
-            <div class="metric-detail-label">${m.nombre}</div>
-            <div class="metric-detail-unit">${m.unidad||''}</div>
-          </div>`).join('')}
-      </div>
-    </div>
-  `;
 
   const tasksHtml = `
     <div class="venture-section">
@@ -1532,12 +1485,6 @@ function renderVenturesDetail() {
     </div>
   `;
 
-  const tabContent = selectedVentureTab === 'metricas'
-    ? metricsHtml
-    : selectedVentureTab === 'tareas'
-      ? tasksHtml
-      : resumenHtml;
-
   document.getElementById('ventures-detail').innerHTML = `
     <div class="venture-detail-nav">
       ${venturesData.map(v => `
@@ -1546,16 +1493,24 @@ function renderVenturesDetail() {
     </div>
     <div class="venture-detail-card" id="venture-detail-${selected.id}">
       <div class="venture-detail-header">
-        <div style="display:flex;align-items:center;gap:10px;">
+        <div class="venture-header-main">
           <span style="font-size:22px;">${selected.emoji}</span>
           <div>
             <div style="font-size:14px;font-weight:600;color:var(--text);">${selected.nombre}</div>
             <div style="font-size:10px;color:var(--text3);">${selected.nombre_entidad||''} · ${selected.categoria||''}</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div class="venture-header-side">
+          <div class="venture-header-metrics">
+            ${headerMetrics.map(m => `
+              <div class="venture-metric-chip">
+                <div class="venture-metric-chip-value">${escapeHtml(m.valor)}</div>
+                <div class="venture-metric-chip-label">${escapeHtml(m.nombre)}</div>
+              </div>
+            `).join('')}
+          </div>
           <span class="status-pill pill-${selected.estado}">${estadoLabel}</span>
-          <button type="button" class="btn btn-secondary" onclick="setPage('dashboard')">Volver al Dashboard</button>
+          <button type="button" class="btn btn-secondary btn-dashboard-back" onclick="setPage('dashboard')">Volver</button>
         </div>
       </div>
       <div class="venture-detail-body">
@@ -1565,12 +1520,7 @@ function renderVenturesDetail() {
         <div class="progress-bar" style="height:6px;">
           <div class="progress-fill" style="width:${selectedProgress}%"></div>
         </div>
-        <div class="venture-tabs">
-          <button type="button" class="venture-tab ${selectedVentureTab === 'resumen' ? 'active' : ''}" onclick="setVentureTab('resumen')">Resumen</button>
-          <button type="button" class="venture-tab ${selectedVentureTab === 'metricas' ? 'active' : ''}" onclick="setVentureTab('metricas')">Metricas</button>
-          <button type="button" class="venture-tab ${selectedVentureTab === 'tareas' ? 'active' : ''}" onclick="setVentureTab('tareas')">Tareas</button>
-        </div>
-        ${tabContent}
+        ${tasksHtml}
       </div>
     </div>`;
 }
