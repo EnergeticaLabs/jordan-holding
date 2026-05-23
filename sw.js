@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vfh-v3';
+const CACHE_NAME = 'vfh-v4';
 const APP_SHELL_CACHE = [
   '/',
   '/manifest.json'

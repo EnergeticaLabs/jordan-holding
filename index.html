@@ -1580,6 +1580,10 @@ function renderVenturesDetail() {
 
   const kanbanHtml = `
     <div class="venture-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="panel-title">Tablero Kanban</div>
+        <div class="empty-sub">Arrastra tareas entre columnas</div>
+      </div>
       <div class="venture-kanban">
         <div class="kanban-col" ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event, 'pendiente')">
           <div class="kanban-col-header">
@@ -2710,7 +2714,7 @@ init();
 // ── PWA: REGISTRAR SERVICE WORKER ──
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js?v=20260523-2")
+    navigator.serviceWorker.register("/sw.js?v=20260523-3")
       .then(reg => console.log("SW registrado:", reg.scope))
       .catch(err => console.log("SW error:", err));
   });
