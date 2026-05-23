@@ -1496,15 +1496,20 @@ function ensureInboxComposerVisible() {
     const composer = notesPage.querySelector('.notes-card:last-child .notes-body');
     if (!composer) return;
 
+    const activeEl = document.activeElement;
+    const focusedInput = activeEl && activeEl.classList && activeEl.classList.contains('notes-line-input')
+      ? activeEl
+      : null;
+    const targetEl = focusedInput || composer;
+
     const vv = window.visualViewport;
     const viewportTop = vv ? vv.offsetTop : 0;
     const viewportHeight = vv ? vv.height : window.innerHeight;
     const viewportBottom = viewportTop + viewportHeight;
-    const keyboardInset = Math.max(0, window.innerHeight - viewportHeight - viewportTop);
 
-    const rect = composer.getBoundingClientRect();
-    const safeTop = viewportTop + 64;
-    const safeBottom = Math.max(16, keyboardInset + 16);
+    const rect = targetEl.getBoundingClientRect();
+    const safeTop = viewportTop + 88;
+    const safeBottom = Math.min(Math.max(140, viewportHeight * 0.28), Math.max(80, viewportHeight - 80));
     let delta = 0;
 
     if (rect.top < safeTop) {
