@@ -1413,7 +1413,7 @@ function bindNotesInbox() {
   renderInboxPreview();
 }
 
-function renderInboxEditor() {
+function renderInboxEditor(preferredFocusLineId = null, preferredSelection = null) {
   const container = document.getElementById('notes-inbox-list');
   if (!container) return;
   const focusedEl = document.activeElement;
@@ -1450,8 +1450,8 @@ function renderInboxEditor() {
   container.querySelectorAll('.notes-line-input').forEach(autosizeNoteTextarea);
   updateInlineSuggestions();
 
-  if (!wasInboxFocused) return;
-  const fallbackLineId = focusedLineId || activeInboxLineId || notesInboxLines[0]?.id || null;
+  if (!wasInboxFocused && !preferredFocusLineId) return;
+  const fallbackLineId = preferredFocusLineId || activeInboxLineId || focusedLineId || notesInboxLines[0]?.id || null;
   if (!fallbackLineId) return;
 
   requestAnimationFrame(() => {
@@ -1464,7 +1464,10 @@ function renderInboxEditor() {
     }
     setActiveInboxLine(fallbackLineId);
 
-    if (focusedLineId === fallbackLineId && focusedStart !== null && focusedEnd !== null) {
+    if (preferredSelection && preferredSelection.start !== undefined && preferredSelection.end !== undefined) {
+      const maxLen = input.value.length;
+      input.setSelectionRange(Math.min(preferredSelection.start, maxLen), Math.min(preferredSelection.end, maxLen));
+    } else if (focusedLineId === fallbackLineId && focusedStart !== null && focusedEnd !== null) {
       const maxLen = input.value.length;
       input.setSelectionRange(Math.min(focusedStart, maxLen), Math.min(focusedEnd, maxLen));
     } else {
@@ -1627,10 +1630,10 @@ function insertInboxLineAfter(lineId, text = '') {
   const next = { id: crypto.randomUUID(), text };
   if (idx < 0) notesInboxLines.push(next);
   else notesInboxLines.splice(idx + 1, 0, next);
+  activeInboxLineId = next.id;
   saveInboxLines();
-  renderInboxEditor();
+  renderInboxEditor(next.id, { start: 0, end: 0 });
   renderInboxPreview();
-  focusInboxLine(next.id);
 }
 
 function focusInboxLine(lineId) {
