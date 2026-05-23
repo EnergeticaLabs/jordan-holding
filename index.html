@@ -1186,6 +1186,7 @@ let currentUser = null;
 let currentProfileId = null;
 let venturesData = [];
 let tasksData    = [];
+let tasksProgressData = [];
 let notesTodayData = [];
 let usersData = [];
 let notesPreviewData = [];
@@ -1355,6 +1356,13 @@ async function loadTasks() {
     .neq('estado','completado').neq('estado','cancelado')
     .order('fecha_limite', { ascending:true, nullsFirst:false });
   tasksData = data || [];
+
+  // Dataset para calcular avance dinamico por venture
+  const { data: progressData } = await sb.from('tasks')
+    .select('id,venture_id,estado,titulo')
+    .neq('estado', 'cancelado');
+  tasksProgressData = progressData || [];
+
   document.getElementById('sb-tareas').textContent = tasksData.length;
 }
 
@@ -1381,7 +1389,7 @@ async function loadActivity() {
 // ── RENDER ──
 function renderDashboard() {
   const total  = venturesData.length;
-  const avg    = total ? Math.round(venturesData.reduce((s,v)=>s+v.avance,0)/total) : 0;
+  const avg    = total ? Math.round(venturesData.reduce((s,v)=>s+getVentureProgress(v),0)/total) : 0;
   const urgentes = tasksData.filter(t=>t.prioridad==='urgente'||t.prioridad==='alta').length;
   document.getElementById('kpi-ventures').innerHTML = `${total}<span>/${total}</span>`;
   document.getElementById('kpi-tareas').textContent  = tasksData.length;
@@ -1392,9 +1400,10 @@ function renderDashboard() {
 
   // Ventures grid
   document.getElementById('ventures-grid').innerHTML = venturesData.map(v => {
+    const progress = getVentureProgress(v);
     const metrics = (v.venture_metrics||[]).sort((a,b)=>a.orden-b.orden).slice(0,1);
     const estadoLabel = {activo:'Activo',building:'Building',planeado:'Planeado',pausado:'Pausado'}[v.estado]||v.estado;
-    const pColor = v.avance>=60?'green':v.avance>=30?'':'blue';
+    const pColor = progress>=60?'green':progress>=30?'':'blue';
     return `
       <div class="venture-card" onclick="openVentureDetails('${v.id}')">
         <div class="venture-card-top">
@@ -1403,9 +1412,9 @@ function renderDashboard() {
         </div>
         <div class="venture-name">${v.nombre}</div>
         <div class="venture-entity">${v.nombre_entidad||''}</div>
-        <div class="progress-bar"><div class="progress-fill ${pColor}" style="width:${v.avance}%"></div></div>
+        <div class="progress-bar"><div class="progress-fill ${pColor}" style="width:${progress}%"></div></div>
         <div class="venture-meta-compact">
-          <span>${v.avance}%</span>
+          <span>${progress}%</span>
           ${metrics[0] ? `<span>${metrics[0].nombre}: ${metrics[0].valor}</span>` : ''}
         </div>
       </div>`;
@@ -1471,6 +1480,7 @@ function renderVenturesDetail() {
   }
 
   const selected = venturesData.find(v => String(v.id) === String(selectedVentureId)) || venturesData[0];
+  const selectedProgress = getVentureProgress(selected);
   const metrics = (selected.venture_metrics || []).sort((a, b) => a.orden - b.orden);
   const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[selected.estado] || selected.estado;
   const ventureTasks = tasksData.filter(t => String(t.venture_id || '') === String(selected.id) || taskMatchesVentureTag(t, selected));
@@ -1480,7 +1490,7 @@ function renderVenturesDetail() {
       <div class="venture-summary-grid">
         <div class="venture-summary-card">
           <div class="venture-summary-label">Avance</div>
-          <div class="venture-summary-value">${selected.avance}%</div>
+          <div class="venture-summary-value">${selectedProgress}%</div>
         </div>
         <div class="venture-summary-card">
           <div class="venture-summary-label">Pendientes</div>
@@ -1550,10 +1560,10 @@ function renderVenturesDetail() {
       </div>
       <div class="venture-detail-body">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:6px;">
-          <span>Avance</span><span>${selected.avance}%</span>
+          <span>Avance</span><span>${selectedProgress}%</span>
         </div>
         <div class="progress-bar" style="height:6px;">
-          <div class="progress-fill" style="width:${selected.avance}%"></div>
+          <div class="progress-fill" style="width:${selectedProgress}%"></div>
         </div>
         <div class="venture-tabs">
           <button type="button" class="venture-tab ${selectedVentureTab === 'resumen' ? 'active' : ''}" onclick="setVentureTab('resumen')">Resumen</button>
@@ -1959,6 +1969,49 @@ function parseInboxLine(lineText) {
 
 function normalizeText(value) {
   return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function toPercent(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function hasMetricValue(metric) {
+  if (!metric) return false;
+  const raw = String(metric.valor ?? '').trim();
+  if (!raw) return false;
+  return raw !== '-' && raw.toLowerCase() !== 'n/a';
+}
+
+function getVentureProgress(venture) {
+  if (!venture) return 0;
+
+  const relatedTasks = tasksProgressData.filter(t =>
+    String(t.venture_id || '') === String(venture.id) || taskMatchesVentureTag(t, venture)
+  );
+
+  const completed = relatedTasks.filter(t => t.estado === 'completado').length;
+  const pending = relatedTasks.filter(t => t.estado !== 'completado').length;
+  const totalTasks = completed + pending;
+
+  let taskScore = 0;
+  if (totalTasks > 0) {
+    const completionRatio = (completed / totalTasks) * 100;
+    const backlogPenalty = Math.min(pending * 6, 30);
+    taskScore = Math.max(0, completionRatio - backlogPenalty);
+  }
+
+  const metrics = venture.venture_metrics || [];
+  const metricsTotal = metrics.length;
+  const metricsWithValue = metrics.filter(hasMetricValue).length;
+  const metricsScore = metricsTotal ? (metricsWithValue / metricsTotal) * 100 : 0;
+
+  const hasDynamicSignals = totalTasks > 0 || metricsTotal > 0;
+  if (!hasDynamicSignals) return toPercent(venture.avance);
+
+  const dynamic = (taskScore * 0.75) + (metricsScore * 0.25);
+  return toPercent(dynamic);
 }
 
 function getNextWeekdayDate(targetDay) {
