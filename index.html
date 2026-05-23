@@ -354,20 +354,20 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .section-title-sm { font-size: 13px; font-weight: 600; color: var(--text); }
 .ventures-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px; margin-bottom: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px; margin-bottom: 14px;
 }
 .venture-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px; cursor: pointer;
+  border-radius: 10px; padding: 9px; cursor: pointer;
   transition: all 0.2s; box-shadow: var(--shadow);
 }
 .venture-card:hover { border-color: var(--border2); transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .venture-card-top {
   display: flex; align-items: flex-start;
-  justify-content: space-between; margin-bottom: 8px;
+  justify-content: space-between; margin-bottom: 6px;
 }
-.venture-emoji { font-size: 18px; }
+.venture-emoji { font-size: 16px; }
 .status-pill {
   font-size: 10px; font-weight: 600; padding: 3px 8px;
   border-radius: 10px; text-transform: uppercase; letter-spacing: 0.05em;
@@ -376,8 +376,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .pill-building { background: var(--amber-bg);  color: var(--amber); }
 .pill-planeado { background: var(--surface3);  color: var(--text3); }
 .pill-pausado  { background: var(--red-bg);    color: var(--red); }
-.venture-name   { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
-.venture-entity { font-size: 9px; color: var(--text3); margin-bottom: 8px; }
+.venture-name   { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 1px; }
+.venture-entity { font-size: 8px; color: var(--text3); margin-bottom: 6px; }
 .progress-bar {
   height: 3px; background: var(--surface3);
   border-radius: 2px; margin-bottom: 8px; overflow: hidden;
@@ -390,6 +390,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .progress-fill.blue   { background: var(--blue); }
 .progress-fill.purple { background: var(--purple); }
 .venture-meta { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); }
+.venture-meta-compact { display: flex; justify-content: space-between; font-size: 9px; color: var(--text3); margin-top: 5px; }
 .metrics-row {
   display: flex; gap: 5px; margin-top: 8px;
   padding-top: 8px; border-top: 1px solid var(--border);
@@ -799,7 +800,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 
   .main { padding: 16px; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .ventures-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .ventures-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .bottom-grid { grid-template-columns: 1fr; gap: 10px; }
   .notes-grid { grid-template-columns: 1fr; }
   .ventures-detail-grid { grid-template-columns: 1fr; }
@@ -1356,7 +1357,7 @@ function renderDashboard() {
 
   // Ventures grid
   document.getElementById('ventures-grid').innerHTML = venturesData.map(v => {
-    const metrics = (v.venture_metrics||[]).sort((a,b)=>a.orden-b.orden).slice(0,3);
+    const metrics = (v.venture_metrics||[]).sort((a,b)=>a.orden-b.orden).slice(0,1);
     const estadoLabel = {activo:'Activo',building:'Building',planeado:'Planeado',pausado:'Pausado'}[v.estado]||v.estado;
     const pColor = v.avance>=60?'green':v.avance>=30?'':'blue';
     return `
@@ -1368,12 +1369,10 @@ function renderDashboard() {
         <div class="venture-name">${v.nombre}</div>
         <div class="venture-entity">${v.nombre_entidad||''}</div>
         <div class="progress-bar"><div class="progress-fill ${pColor}" style="width:${v.avance}%"></div></div>
-        <div class="venture-meta"><span>${v.avance}% completado</span></div>
-        ${metrics.length>0?`<div class="metrics-row">${metrics.map(m=>`
-          <div class="metric-item">
-            <div class="metric-value">${m.valor}</div>
-            <div class="metric-label">${m.nombre}</div>
-          </div>`).join('')}</div>`:''}
+        <div class="venture-meta-compact">
+          <span>${v.avance}%</span>
+          ${metrics[0] ? `<span>${metrics[0].nombre}: ${metrics[0].valor}</span>` : ''}
+        </div>
       </div>`;
   }).join('');
 
@@ -1395,6 +1394,16 @@ function openVentureDetails(ventureId) {
 function setVentureTab(tab) {
   selectedVentureTab = tab;
   renderVenturesDetail();
+}
+
+function taskMatchesVentureTag(task, venture) {
+  if (!task?.titulo || !venture?.nombre) return false;
+  const raw = cleanTaskTitle(task.titulo);
+  const tags = [...raw.matchAll(/(^|\s)#([a-zA-Z0-9_-]+)/g)]
+    .map(m => normalizeText(m[2]).replace(/\s+/g, ''));
+  if (!tags.length) return false;
+  const ventureKey = normalizeText(venture.nombre).replace(/\s+/g, '');
+  return tags.some(tag => tag === ventureKey || ventureKey.includes(tag) || tag.includes(ventureKey));
 }
 
 function renderTasksPanel() {
@@ -1429,7 +1438,7 @@ function renderVenturesDetail() {
   const selected = venturesData.find(v => String(v.id) === String(selectedVentureId)) || venturesData[0];
   const metrics = (selected.venture_metrics || []).sort((a, b) => a.orden - b.orden);
   const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[selected.estado] || selected.estado;
-  const ventureTasks = tasksData.filter(t => String(t.venture_id || '') === String(selected.id));
+  const ventureTasks = tasksData.filter(t => String(t.venture_id || '') === String(selected.id) || taskMatchesVentureTag(t, selected));
 
   const resumenHtml = `
     <div class="venture-section">
