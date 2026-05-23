@@ -648,6 +648,26 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-radius: var(--radius); margin-bottom: 0;
   box-shadow: var(--shadow); overflow: hidden;
 }
+.venture-detail-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.venture-detail-chip {
+  font-size: 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  cursor: pointer;
+}
+.venture-detail-chip.active {
+  border-color: var(--gold-dim);
+  background: var(--gold-bg);
+  color: var(--gold-dim);
+}
 .ventures-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1315,11 +1335,6 @@ function openVentureDetails(ventureId) {
   selectedVentureId = ventureId || null;
   setPage('ventures');
   renderVenturesDetail();
-  if (!ventureId) return;
-  requestAnimationFrame(() => {
-    const card = document.getElementById(`venture-detail-${ventureId}`);
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
 }
 
 function renderTasksPanel() {
@@ -1342,62 +1357,53 @@ function renderTasksPanel() {
 }
 
 function renderVenturesDetail() {
-  const orderedVentures = selectedVentureId
-    ? [
-        ...venturesData.filter(v => String(v.id) === String(selectedVentureId)),
-        ...venturesData.filter(v => String(v.id) !== String(selectedVentureId))
-      ]
-    : venturesData;
+  if (!venturesData.length) {
+    document.getElementById('ventures-detail').innerHTML = `<div class="empty-state"><div class="empty-icon">◈</div><div class="empty-text">Sin ventures cargados</div></div>`;
+    return;
+  }
 
-  document.getElementById('ventures-detail').innerHTML = `<div class="ventures-detail-grid">${orderedVentures.map(v => {
-    const metrics = (v.venture_metrics||[]).sort((a,b)=>a.orden-b.orden);
-    const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[v.estado]||v.estado;
-    const isSelected = String(v.id) === String(selectedVentureId);
-    const topMetrics = metrics.slice(0, 3);
-    return `
-      <div class="venture-detail-card ${isSelected ? '' : 'is-compact'}" id="venture-detail-${v.id}">
-        <div class="venture-detail-header">
-          <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="openVentureDetails('${v.id}')">
-            <span style="font-size:22px;">${v.emoji}</span>
-            <div>
-              <div style="font-size:14px;font-weight:600;color:var(--text);">${v.nombre}</div>
-              <div style="font-size:10px;color:var(--text3);">${v.nombre_entidad||''} · ${v.categoria||''}</div>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span class="status-pill pill-${v.estado}">${estadoLabel}</span>
-            ${isSelected ? '' : `<span class="panel-link" onclick="openVentureDetails('${v.id}')">abrir</span>`}
+  if (!selectedVentureId || !venturesData.some(v => String(v.id) === String(selectedVentureId))) {
+    selectedVentureId = venturesData[0].id;
+  }
+
+  const selected = venturesData.find(v => String(v.id) === String(selectedVentureId)) || venturesData[0];
+  const metrics = (selected.venture_metrics || []).sort((a, b) => a.orden - b.orden);
+  const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[selected.estado] || selected.estado;
+
+  document.getElementById('ventures-detail').innerHTML = `
+    <div class="venture-detail-nav">
+      ${venturesData.map(v => `
+        <button type="button" class="venture-detail-chip ${String(v.id) === String(selected.id) ? 'active' : ''}" onclick="openVentureDetails('${v.id}')">${v.emoji} ${v.nombre}</button>
+      `).join('')}
+    </div>
+    <div class="venture-detail-card" id="venture-detail-${selected.id}">
+      <div class="venture-detail-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:22px;">${selected.emoji}</span>
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--text);">${selected.nombre}</div>
+            <div style="font-size:10px;color:var(--text3);">${selected.nombre_entidad||''} · ${selected.categoria||''}</div>
           </div>
         </div>
-        <div class="venture-detail-body">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:6px;">
-            <span>Avance</span><span>${v.avance}%</span>
-          </div>
-          <div class="progress-bar" style="height:6px;">
-            <div class="progress-fill" style="width:${v.avance}%"></div>
-          </div>
-          ${isSelected ? `
-            <div class="metrics-detail-grid">
-              ${metrics.map(m=>`
-                <div class="metric-detail-card">
-                  <div class="metric-detail-value">${m.valor}</div>
-                  <div class="metric-detail-label">${m.nombre}</div>
-                  <div class="metric-detail-unit">${m.unidad||''}</div>
-                </div>`).join('')}
-            </div>
-          ` : `
-            <div class="metrics-mini-row">
-              ${topMetrics.map(m => `
-                <div class="metric-mini">
-                  <div class="metric-mini-value">${m.valor}</div>
-                  <div class="metric-mini-label">${m.nombre}</div>
-                </div>
-              `).join('')}
-            </div>
-          `}
+        <span class="status-pill pill-${selected.estado}">${estadoLabel}</span>
+      </div>
+      <div class="venture-detail-body">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:6px;">
+          <span>Avance</span><span>${selected.avance}%</span>
         </div>
-      </div>`;
-  }).join('')}</div>`;
+        <div class="progress-bar" style="height:6px;">
+          <div class="progress-fill" style="width:${selected.avance}%"></div>
+        </div>
+        <div class="metrics-detail-grid">
+          ${metrics.map(m=>`
+            <div class="metric-detail-card">
+              <div class="metric-detail-value">${m.valor}</div>
+              <div class="metric-detail-label">${m.nombre}</div>
+              <div class="metric-detail-unit">${m.unidad||''}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderTareasPage() {
