@@ -668,6 +668,56 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   background: var(--gold-bg);
   color: var(--gold-dim);
 }
+.venture-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 0;
+  flex-wrap: wrap;
+}
+.venture-tab {
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  cursor: pointer;
+}
+.venture-tab.active {
+  border-color: var(--gold-dim);
+  color: var(--gold-dim);
+  background: var(--gold-bg);
+}
+.venture-section {
+  margin-top: 12px;
+}
+.venture-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.venture-summary-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  padding: 10px;
+  text-align: center;
+}
+.venture-summary-label { font-size: 9px; color: var(--text3); margin-bottom: 3px; }
+.venture-summary-value { font-size: 14px; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+.venture-tasks-list {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.venture-task-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text2);
+}
+.venture-task-item:last-child { border-bottom: none; }
+.venture-task-title { color: var(--text); margin-bottom: 3px; }
 .ventures-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -753,6 +803,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .bottom-grid { grid-template-columns: 1fr; gap: 10px; }
   .notes-grid { grid-template-columns: 1fr; }
   .ventures-detail-grid { grid-template-columns: 1fr; }
+  .venture-summary-grid { grid-template-columns: 1fr; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
   .notes-line-input { font-size: 12px; }
@@ -1113,6 +1164,7 @@ let notesInboxLines = [];
 let activeInboxLineId = null;
 let notesSyncTimers = {};
 let selectedVentureId = null;
+let selectedVentureTab = 'resumen';
 const NOTE_PREFIX = '[NOTA] ';
 
 // Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
@@ -1332,8 +1384,16 @@ function renderDashboard() {
 }
 
 function openVentureDetails(ventureId) {
+  if (ventureId && String(ventureId) !== String(selectedVentureId)) {
+    selectedVentureTab = 'resumen';
+  }
   selectedVentureId = ventureId || null;
   setPage('ventures');
+  renderVenturesDetail();
+}
+
+function setVentureTab(tab) {
+  selectedVentureTab = tab;
   renderVenturesDetail();
 }
 
@@ -1369,6 +1429,60 @@ function renderVenturesDetail() {
   const selected = venturesData.find(v => String(v.id) === String(selectedVentureId)) || venturesData[0];
   const metrics = (selected.venture_metrics || []).sort((a, b) => a.orden - b.orden);
   const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[selected.estado] || selected.estado;
+  const ventureTasks = tasksData.filter(t => String(t.venture_id || '') === String(selected.id));
+
+  const resumenHtml = `
+    <div class="venture-section">
+      <div class="venture-summary-grid">
+        <div class="venture-summary-card">
+          <div class="venture-summary-label">Avance</div>
+          <div class="venture-summary-value">${selected.avance}%</div>
+        </div>
+        <div class="venture-summary-card">
+          <div class="venture-summary-label">Pendientes</div>
+          <div class="venture-summary-value">${ventureTasks.length}</div>
+        </div>
+        <div class="venture-summary-card">
+          <div class="venture-summary-label">Estado</div>
+          <div class="venture-summary-value">${escapeHtml(estadoLabel)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const metricsHtml = `
+    <div class="venture-section">
+      <div class="metrics-detail-grid">
+        ${metrics.map(m=>`
+          <div class="metric-detail-card">
+            <div class="metric-detail-value">${m.valor}</div>
+            <div class="metric-detail-label">${m.nombre}</div>
+            <div class="metric-detail-unit">${m.unidad||''}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+
+  const tasksHtml = `
+    <div class="venture-section">
+      ${ventureTasks.length ? `
+        <div class="venture-tasks-list">
+          ${ventureTasks.map(t => `
+            <div class="venture-task-item">
+              <div class="venture-task-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+              <div>${escapeHtml(t.prioridad || 'media')}${t.fecha_limite ? ` · ${escapeHtml(formatDate(t.fecha_limite))}` : ''}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : `<div class="empty-sub">No hay tareas pendientes para esta venture.</div>`}
+    </div>
+  `;
+
+  const tabContent = selectedVentureTab === 'metricas'
+    ? metricsHtml
+    : selectedVentureTab === 'tareas'
+      ? tasksHtml
+      : resumenHtml;
 
   document.getElementById('ventures-detail').innerHTML = `
     <div class="venture-detail-nav">
@@ -1385,7 +1499,10 @@ function renderVenturesDetail() {
             <div style="font-size:10px;color:var(--text3);">${selected.nombre_entidad||''} · ${selected.categoria||''}</div>
           </div>
         </div>
-        <span class="status-pill pill-${selected.estado}">${estadoLabel}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="status-pill pill-${selected.estado}">${estadoLabel}</span>
+          <button type="button" class="btn btn-secondary" onclick="setPage('dashboard')">Volver al Dashboard</button>
+        </div>
       </div>
       <div class="venture-detail-body">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:6px;">
@@ -1394,14 +1511,12 @@ function renderVenturesDetail() {
         <div class="progress-bar" style="height:6px;">
           <div class="progress-fill" style="width:${selected.avance}%"></div>
         </div>
-        <div class="metrics-detail-grid">
-          ${metrics.map(m=>`
-            <div class="metric-detail-card">
-              <div class="metric-detail-value">${m.valor}</div>
-              <div class="metric-detail-label">${m.nombre}</div>
-              <div class="metric-detail-unit">${m.unidad||''}</div>
-            </div>`).join('')}
+        <div class="venture-tabs">
+          <button type="button" class="venture-tab ${selectedVentureTab === 'resumen' ? 'active' : ''}" onclick="setVentureTab('resumen')">Resumen</button>
+          <button type="button" class="venture-tab ${selectedVentureTab === 'metricas' ? 'active' : ''}" onclick="setVentureTab('metricas')">Metricas</button>
+          <button type="button" class="venture-tab ${selectedVentureTab === 'tareas' ? 'active' : ''}" onclick="setVentureTab('tareas')">Tareas</button>
         </div>
+        ${tabContent}
       </div>
     </div>`;
 }
