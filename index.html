@@ -1145,6 +1145,12 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       </select>
     </div>
     <div class="form-group">
+      <label class="form-label">Asignado a</label>
+      <select class="form-input" id="task-asignado">
+        <option value="">— Sin responsable —</option>
+      </select>
+    </div>
+    <div class="form-group">
       <label class="form-label">Prioridad</label>
       <select class="form-input" id="task-prioridad">
         <option value="baja">Baja</option>
@@ -1300,6 +1306,12 @@ async function loadApp() {
 async function loadUsers() {
   const { data } = await sb.from('users').select('id,nombre').limit(30);
   usersData = data || [];
+
+  const userSelect = document.getElementById('task-asignado');
+  if (userSelect) {
+    userSelect.innerHTML = '<option value="">— Sin responsable —</option>' +
+      usersData.map(u => `<option value="${u.id}">${escapeHtml(u.nombre)}</option>`).join('');
+  }
 }
 
 async function loadUserProfile() {
@@ -2449,15 +2461,25 @@ function closeTaskModal(e) {
     document.getElementById('task-modal').style.display='none';
     document.getElementById('task-titulo').value='';
     document.getElementById('task-fecha').value='';
+    document.getElementById('task-asignado').value='';
   }
 }
 
 async function saveTask() {
   const titulo    = document.getElementById('task-titulo').value.trim();
   const venture   = document.getElementById('task-venture').value;
+  const asignado  = document.getElementById('task-asignado').value;
   const prioridad = document.getElementById('task-prioridad').value;
   const fecha     = document.getElementById('task-fecha').value;
   if (!titulo) { alert('Escribe el título de la tarea'); return; }
+
+  const assignedUser = asignado ? usersData.find(u => String(u.id) === String(asignado)) : null;
+  const assignedTag = assignedUser
+    ? `@${normalizeText(assignedUser.nombre).replace(/\s+/g, '')}`
+    : '';
+  const tituloFinal = assignedTag && !new RegExp(`(^|\\s)${assignedTag}(\\s|$)`, 'i').test(titulo)
+    ? `${titulo} ${assignedTag}`
+    : titulo;
 
   const creatorProfileId = await ensureCurrentProfileId();
   if (!creatorProfileId) {
@@ -2466,7 +2488,7 @@ async function saveTask() {
   }
 
   const { error } = await sb.from('tasks').insert({
-    titulo, venture_id: venture||null, prioridad,
+    titulo: tituloFinal, venture_id: venture||null, prioridad,
     fecha_limite: fecha||null, estado:'pendiente', creado_por: creatorProfileId
   });
   if (!error) {
