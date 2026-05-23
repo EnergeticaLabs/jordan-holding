@@ -707,6 +707,12 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   align-items: center;
   gap: 10px;
 }
+.venture-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .venture-header-side {
   display: flex;
   align-items: center;
@@ -739,6 +745,12 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   font-size: 9px;
   color: var(--text3);
   margin-top: 1px;
+}
+.venture-status-mini {
+  font-size: 8px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  letter-spacing: 0.04em;
 }
 .btn-dashboard-back {
   padding: 5px 9px;
@@ -1496,7 +1508,10 @@ function renderVenturesDetail() {
         <div class="venture-header-main">
           <span style="font-size:22px;">${selected.emoji}</span>
           <div>
-            <div style="font-size:14px;font-weight:600;color:var(--text);">${selected.nombre}</div>
+            <div class="venture-title-row">
+              <div style="font-size:14px;font-weight:600;color:var(--text);">${selected.nombre}</div>
+              <span class="status-pill venture-status-mini pill-${selected.estado}">${estadoLabel}</span>
+            </div>
             <div style="font-size:10px;color:var(--text3);">${selected.nombre_entidad||''} · ${selected.categoria||''}</div>
           </div>
         </div>
@@ -1509,7 +1524,6 @@ function renderVenturesDetail() {
               </div>
             `).join('')}
           </div>
-          <span class="status-pill pill-${selected.estado}">${estadoLabel}</span>
           <button type="button" class="btn btn-secondary btn-dashboard-back" onclick="setPage('dashboard')">Volver</button>
         </div>
       </div>
