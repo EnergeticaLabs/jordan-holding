@@ -691,6 +691,70 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .venture-section {
   margin-top: 12px;
 }
+.venture-kanban {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.kanban-col {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 220px;
+}
+.kanban-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.kanban-col-body {
+  padding: 8px;
+  min-height: 170px;
+}
+.kanban-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow);
+  cursor: grab;
+}
+.kanban-card:last-child { margin-bottom: 0; }
+.kanban-card-title {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.35;
+  margin-bottom: 4px;
+}
+.kanban-card-meta {
+  font-size: 9px;
+  color: var(--text3);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.kanban-count {
+  font-size: 9px;
+  color: var(--text3);
+}
+.kanban-empty {
+  font-size: 10px;
+  color: var(--text3);
+  padding: 10px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
 .venture-tasks-list {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -836,6 +900,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .bottom-grid { grid-template-columns: 1fr; gap: 10px; }
   .notes-grid { grid-template-columns: 1fr; }
   .ventures-detail-grid { grid-template-columns: 1fr; }
+  .venture-kanban { grid-template-columns: 1fr; }
   .venture-header-side { margin-left: 0; justify-content: flex-start; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
@@ -1375,7 +1440,7 @@ async function loadTasks() {
 
   // Dataset para calcular avance dinamico por venture
   const { data: progressData } = await sb.from('tasks')
-    .select('id,venture_id,estado,titulo')
+    .select('id,venture_id,estado,titulo,prioridad,fecha_limite,completado_en')
     .neq('estado', 'cancelado');
   tasksProgressData = progressData || [];
 
@@ -1494,20 +1559,47 @@ function renderVenturesDetail() {
   const metrics = (selected.venture_metrics || []).sort((a, b) => a.orden - b.orden);
   const headerMetrics = metrics.slice(0, 3);
   const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[selected.estado] || selected.estado;
-  const ventureTasks = tasksData.filter(t => String(t.venture_id || '') === String(selected.id) || taskMatchesVentureTag(t, selected));
+  const ventureBoardTasks = tasksProgressData.filter(t =>
+    String(t.venture_id || '') === String(selected.id) || taskMatchesVentureTag(t, selected)
+  );
+  const venturePendingTasks = ventureBoardTasks.filter(t => t.estado !== 'completado');
+  const ventureDoneTasks = ventureBoardTasks.filter(t => t.estado === 'completado');
 
-  const tasksHtml = `
-    <div class="venture-section">
-      ${ventureTasks.length ? `
-        <div class="venture-tasks-list">
-          ${ventureTasks.map(t => `
-            <div class="venture-task-item">
-              <div class="venture-task-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
-              <div>${escapeHtml(t.prioridad || 'media')}${t.fecha_limite ? ` · ${escapeHtml(formatDate(t.fecha_limite))}` : ''}</div>
-            </div>
-          `).join('')}
+  const renderKanbanCards = (tasks) => {
+    if (!tasks.length) return `<div class="kanban-empty">Sin tareas</div>`;
+    return tasks.map(t => `
+      <div class="kanban-card" draggable="true" ondragstart="onVentureKanbanDragStart(event, '${t.id}')">
+        <div class="kanban-card-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        <div class="kanban-card-meta">
+          <span>${escapeHtml((t.prioridad || 'media').toUpperCase())}</span>
+          ${t.fecha_limite ? `<span>${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
         </div>
-      ` : `<div class="empty-sub">No hay tareas pendientes para esta venture.</div>`}
+      </div>
+    `).join('');
+  };
+
+  const kanbanHtml = `
+    <div class="venture-section">
+      <div class="venture-kanban">
+        <div class="kanban-col" ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event, 'pendiente')">
+          <div class="kanban-col-header">
+            <span>Pendientes</span>
+            <span class="kanban-count">${venturePendingTasks.length}</span>
+          </div>
+          <div class="kanban-col-body">
+            ${renderKanbanCards(venturePendingTasks)}
+          </div>
+        </div>
+        <div class="kanban-col" ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event, 'completado')">
+          <div class="kanban-col-header">
+            <span>Completadas</span>
+            <span class="kanban-count">${ventureDoneTasks.length}</span>
+          </div>
+          <div class="kanban-col-body">
+            ${renderKanbanCards(ventureDoneTasks)}
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -1543,14 +1635,55 @@ function renderVenturesDetail() {
       </div>
       <div class="venture-detail-body">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:6px;">
-          <span>Avance</span><span>${selectedProgress}%</span>
+          <span>Avance</span><span>${selectedProgress}% · ${venturePendingTasks.length} pendientes</span>
         </div>
         <div class="progress-bar" style="height:6px;">
           <div class="progress-fill" style="width:${selectedProgress}%"></div>
         </div>
-        ${tasksHtml}
+        ${kanbanHtml}
       </div>
     </div>`;
+}
+
+function onVentureKanbanDragStart(event, taskId) {
+  if (!event?.dataTransfer) return;
+  event.dataTransfer.setData('text/plain', String(taskId));
+  event.dataTransfer.effectAllowed = 'move';
+}
+
+function onVentureKanbanDragOver(event) {
+  event.preventDefault();
+  if (event?.dataTransfer) event.dataTransfer.dropEffect = 'move';
+}
+
+async function onVentureKanbanDrop(event, nextState) {
+  event.preventDefault();
+  const taskId = event?.dataTransfer?.getData('text/plain');
+  if (!taskId) return;
+  await moveTaskInVentureKanban(taskId, nextState);
+}
+
+async function moveTaskInVentureKanban(taskId, nextState) {
+  if (!['pendiente', 'completado'].includes(nextState)) return;
+  const current = tasksProgressData.find(t => String(t.id) === String(taskId));
+  if (!current || current.estado === nextState) return;
+
+  const payload = nextState === 'completado'
+    ? { estado: 'completado', completado_en: new Date().toISOString() }
+    : { estado: 'pendiente', completado_en: null };
+
+  const { error } = await sb.from('tasks').update(payload).eq('id', taskId);
+  if (error) {
+    alert('No se pudo mover la tarea en el Kanban.');
+    return;
+  }
+
+  await logActivity(nextState === 'completado' ? 'movió una tarea a completada (kanban)' : 'movió una tarea a pendiente (kanban)');
+  await loadTasks();
+  await loadNotesToday();
+  renderTasksPanel();
+  renderTareasPage();
+  renderVenturesDetail();
 }
 
 function renderTareasPage() {
