@@ -1761,6 +1761,24 @@ function parseNaturalDueDate(line) {
   return { dueDate: today.toISOString().slice(0, 10), isTodayHint: false };
 }
 
+function buildEntityActivityMessage(parsedLine) {
+  if (!parsedLine) return 'convirtio una linea del inbox en pendiente de hoy';
+  const venture = parsedLine.ventureId
+    ? venturesData.find(v => v.id === parsedLine.ventureId)
+    : null;
+
+  if (venture?.nombre) {
+    return `registro una nota operativa para ${venture.nombre}`;
+  }
+
+  if (parsedLine.entities?.length) {
+    const tags = parsedLine.entities.map(e => `#${e}`).join(' ');
+    return `registro una nota operativa con etiquetas ${tags}`;
+  }
+
+  return 'convirtio una linea del inbox en pendiente de hoy';
+}
+
 function parseInboxLines(rawText) {
   if (rawText === undefined) {
     return notesInboxLines
@@ -1850,7 +1868,7 @@ async function toggleInboxLineSync(index, checked) {
     }
     notesTaskLinkMap[line.lineId] = { taskId: data.id };
     saveNotesLinkMap();
-    await logActivity('convirtio una linea del inbox en pendiente de hoy');
+    await logActivity(buildEntityActivityMessage(line));
   } else {
     const link = notesTaskLinkMap[line.lineId];
     if (!link?.taskId) {
