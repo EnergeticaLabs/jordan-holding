@@ -559,22 +559,44 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   grid-template-columns: 1fr;
   gap: 8px;
 }
+.notes-entry-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.notes-entry-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.notes-entry-input:focus { border-color: var(--gold-dim); }
 .notes-editor {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface2);
-  min-height: 420px;
-  overflow: visible;
+  min-height: 260px;
+  max-height: 420px;
+  overflow: auto;
+  padding: 8px;
 }
-.notes-line {
+.notes-card-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: start;
   gap: 8px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow);
 }
-.notes-line:last-child { border-bottom: none; }
+.notes-card-item:last-child { margin-bottom: 0; }
 .notes-line-input {
   width: 100%; border: none; background: transparent;
   color: var(--text); font-size: 12px; outline: none;
@@ -582,8 +604,40 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   overflow: hidden; line-height: 1.35; min-height: 18px;
   white-space: pre-wrap; word-break: break-word;
 }
+.notes-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .notes-line-check {
   width: 14px; height: 14px; margin-top: 3px;
+}
+.notes-card-handle {
+  font-size: 11px;
+  color: var(--text3);
+  user-select: none;
+  cursor: grab;
+  line-height: 1;
+  margin-top: 2px;
+}
+.notes-card-delete {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text3);
+  border-radius: 6px;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.notes-card-empty {
+  border: 1px dashed var(--border2);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 11px;
+  color: var(--text3);
+  text-align: center;
+  background: var(--surface);
 }
 .notes-preview {
   border: 1px dashed var(--border2);
@@ -1161,6 +1215,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
             <div class="notes-body">
               <div class="notes-help">Escribe sin formulario. Patrones opcionales: <strong>[]</strong> pendiente, <strong>@persona</strong> delegado, <strong>#entidad</strong> venture, <strong>!alta</strong> prioridad.</div>
               <div class="notes-compose">
+                <div class="notes-entry-row">
+                  <input id="notes-inbox-entry" class="notes-entry-input" type="text" placeholder="Escribe y presiona Enter para agregar al inbox" onkeydown="handleInboxQuickEntryKeydown(event)">
+                  <button class="btn btn-secondary" type="button" onclick="addInboxCardFromEntry()">Agregar</button>
+                </div>
                 <div class="notes-editor" id="notes-inbox-list"></div>
               </div>
               <div class="notes-quick">
@@ -1276,6 +1334,7 @@ let notesTaskLinkMap = {};
 let notesInboxLines = [];
 let activeInboxLineId = null;
 let notesSyncTimers = {};
+let draggedInboxLineId = null;
 let selectedVentureId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -1756,8 +1815,7 @@ function bindNotesInbox() {
   const saved = localStorage.getItem(getNotesDraftKey()) || '';
   notesTaskLinkMap = JSON.parse(localStorage.getItem(getNotesLinkMapKey()) || '{}');
   notesInboxLines = toLineObjects(saved);
-  if (!notesInboxLines.length) notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
-  activeInboxLineId = notesInboxLines[0].id;
+  activeInboxLineId = notesInboxLines[0]?.id || null;
   renderInboxEditor();
   renderInboxPreview();
 }
@@ -1765,17 +1823,19 @@ function bindNotesInbox() {
 function renderInboxEditor(preferredFocusLineId = null, preferredSelection = null) {
   const container = document.getElementById('notes-inbox-list');
   if (!container) return;
-  const focusedEl = document.activeElement;
-  const wasInboxFocused = focusedEl && focusedEl.classList && focusedEl.classList.contains('notes-line-input');
-  const focusedLineId = wasInboxFocused ? focusedEl.dataset.lineId : null;
-  const focusedStart = wasInboxFocused ? focusedEl.selectionStart : null;
-  const focusedEnd = wasInboxFocused ? focusedEl.selectionEnd : null;
+  if (!notesInboxLines.length) {
+    container.innerHTML = `<div class="notes-card-empty">Sin tarjetas en inbox. Escribe arriba y presiona Enter.</div>`;
+    updateInlineSuggestions();
+    return;
+  }
 
-  container.innerHTML = notesInboxLines.map((line, idx) => {
-    const parsed = parseInboxLine(line.text);
+  container.innerHTML = notesInboxLines.map((line) => {
     const checked = !!notesTaskLinkMap[line.id];
     return `
-      <div class="notes-line">
+      <div class="notes-card-item" draggable="true"
+           ondragstart="onInboxCardDragStart(event, '${line.id}')"
+           ondragover="onInboxCardDragOver(event)"
+           ondrop="onInboxCardDrop(event, '${line.id}')">
         <textarea
           class="notes-line-input"
           data-line-id="${line.id}"
@@ -1783,24 +1843,27 @@ function renderInboxEditor(preferredFocusLineId = null, preferredSelection = nul
           onfocus="setActiveInboxLine('${line.id}'); setInboxFocusMode(true); ensureInboxComposerVisible();"
           oninput="updateInboxLine('${line.id}', this.value); autosizeNoteTextarea(this);"
           onblur="handleInboxLineBlur()"
-          onkeydown="handleInboxLineKeydown(event, '${line.id}')"
           rows="1"
         >${escapeHtml(line.text)}</textarea>
-        <input
-          type="checkbox"
-          class="notes-line-check"
-          ${checked ? 'checked' : ''}
-          onchange="toggleInboxLineSyncById('${line.id}', this.checked)"
-          title="Enviar a pendientes de hoy"
-        />
+        <div class="notes-card-actions">
+          <span class="notes-card-handle" title="Arrastrar">::</span>
+          <input
+            type="checkbox"
+            class="notes-line-check"
+            ${checked ? 'checked' : ''}
+            onchange="toggleInboxLineSyncById('${line.id}', this.checked)"
+            title="Enviar a pendientes de hoy"
+          />
+          <button type="button" class="notes-card-delete" title="Eliminar" onclick="removeInboxLine('${line.id}')">x</button>
+        </div>
       </div>
     `;
   }).join('');
+
   container.querySelectorAll('.notes-line-input').forEach(autosizeNoteTextarea);
   updateInlineSuggestions();
 
-  if (!wasInboxFocused && !preferredFocusLineId) return;
-  const fallbackLineId = preferredFocusLineId || activeInboxLineId || focusedLineId || notesInboxLines[0]?.id || null;
+  const fallbackLineId = preferredFocusLineId || null;
   if (!fallbackLineId) return;
 
   requestAnimationFrame(() => {
@@ -1816,13 +1879,58 @@ function renderInboxEditor(preferredFocusLineId = null, preferredSelection = nul
     if (preferredSelection && preferredSelection.start !== undefined && preferredSelection.end !== undefined) {
       const maxLen = input.value.length;
       input.setSelectionRange(Math.min(preferredSelection.start, maxLen), Math.min(preferredSelection.end, maxLen));
-    } else if (focusedLineId === fallbackLineId && focusedStart !== null && focusedEnd !== null) {
-      const maxLen = input.value.length;
-      input.setSelectionRange(Math.min(focusedStart, maxLen), Math.min(focusedEnd, maxLen));
     } else {
       input.setSelectionRange(input.value.length, input.value.length);
     }
   });
+}
+
+function handleInboxQuickEntryKeydown(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  addInboxCardFromEntry();
+}
+
+function addInboxCardFromEntry() {
+  const entry = document.getElementById('notes-inbox-entry');
+  if (!entry) return;
+  const text = String(entry.value || '').trim();
+  if (!text) return;
+  const next = { id: crypto.randomUUID(), text };
+  notesInboxLines.push(next);
+  activeInboxLineId = next.id;
+  saveInboxLines();
+  entry.value = '';
+  renderInboxEditor(next.id);
+  renderInboxPreview();
+}
+
+function onInboxCardDragStart(event, lineId) {
+  draggedInboxLineId = lineId;
+  if (event?.dataTransfer) {
+    event.dataTransfer.setData('text/plain', String(lineId));
+    event.dataTransfer.effectAllowed = 'move';
+  }
+}
+
+function onInboxCardDragOver(event) {
+  event.preventDefault();
+  if (event?.dataTransfer) event.dataTransfer.dropEffect = 'move';
+}
+
+function onInboxCardDrop(event, targetLineId) {
+  event.preventDefault();
+  const sourceLineId = draggedInboxLineId || event?.dataTransfer?.getData('text/plain');
+  if (!sourceLineId || sourceLineId === targetLineId) return;
+  const sourceIdx = notesInboxLines.findIndex(l => String(l.id) === String(sourceLineId));
+  const targetIdx = notesInboxLines.findIndex(l => String(l.id) === String(targetLineId));
+  if (sourceIdx < 0 || targetIdx < 0) return;
+  const [moved] = notesInboxLines.splice(sourceIdx, 1);
+  notesInboxLines.splice(targetIdx, 0, moved);
+  activeInboxLineId = moved.id;
+  saveInboxLines();
+  renderInboxEditor(moved.id);
+  renderInboxPreview();
 }
 
 let ensureInboxVisibilityFrame = null;
@@ -2015,29 +2123,11 @@ function removeInboxLine(lineId) {
   if (idx < 0) return;
   const prevId = idx > 0 ? notesInboxLines[idx - 1].id : (notesInboxLines[idx + 1]?.id || null);
   notesInboxLines.splice(idx, 1);
-  if (!notesInboxLines.length) notesInboxLines.push({ id: crypto.randomUUID(), text: '' });
-  activeInboxLineId = prevId || notesInboxLines[0].id;
+  activeInboxLineId = prevId || notesInboxLines[0]?.id || null;
   saveInboxLines();
   renderInboxEditor();
   renderInboxPreview();
   if (activeInboxLineId) focusInboxLine(activeInboxLineId);
-}
-
-function handleInboxLineKeydown(e, lineId) {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const line = getInboxLineById(lineId);
-    if (line?.text) scheduleSyncLinkedInboxLine(lineId);
-    insertInboxLineAfter(lineId, '');
-    return;
-  }
-  if (e.key === 'Backspace') {
-    const line = getInboxLineById(lineId);
-    if (line && !line.text && notesInboxLines.length > 1) {
-      e.preventDefault();
-      removeInboxLine(lineId);
-    }
-  }
 }
 
 function parseInboxLine(lineText) {
@@ -2318,8 +2408,8 @@ async function toggleInboxLineSyncById(lineId, checked) {
 }
 
 function clearNotesInbox() {
-  notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
-  activeInboxLineId = notesInboxLines[0].id;
+  notesInboxLines = [];
+  activeInboxLineId = null;
   localStorage.removeItem(getNotesDraftKey());
   renderInboxEditor();
   renderInboxPreview();
@@ -2331,7 +2421,7 @@ function removeInboxLinesByFingerprints(fingerprints) {
     const parsed = parseInboxLine(line.text);
     return !fpSet.has(parsed.fingerprint);
   });
-  if (!notesInboxLines.length) notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
+  activeInboxLineId = notesInboxLines[0]?.id || null;
   saveInboxLines();
   renderInboxEditor();
   renderInboxPreview();
@@ -2340,7 +2430,7 @@ function removeInboxLinesByFingerprints(fingerprints) {
 function removeInboxLinesByIds(lineIds) {
   const idSet = new Set(lineIds);
   notesInboxLines = notesInboxLines.filter(line => !idSet.has(line.id));
-  if (!notesInboxLines.length) notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
+  activeInboxLineId = notesInboxLines[0]?.id || null;
   saveInboxLines();
   renderInboxEditor();
   renderInboxPreview();
@@ -2375,13 +2465,25 @@ function closeNotesParserPreview(e) {
 }
 
 function insertIntoInbox(textToInsert) {
-  const line = getInboxLineById(activeInboxLineId) || notesInboxLines[0];
-  if (!line) return;
-  line.text = `${line.text || ''}${textToInsert}`;
-  saveInboxLines();
-  renderInboxEditor();
-  renderInboxPreview();
-  focusInboxLine(line.id);
+  const entry = document.getElementById('notes-inbox-entry');
+  if (entry && document.activeElement === entry) {
+    entry.value = `${entry.value || ''}${textToInsert}`;
+    entry.focus();
+    return;
+  }
+  const line = getInboxLineById(activeInboxLineId) || notesInboxLines[0] || null;
+  if (line) {
+    line.text = `${line.text || ''}${textToInsert}`;
+    saveInboxLines();
+    renderInboxEditor(line.id);
+    renderInboxPreview();
+    focusInboxLine(line.id);
+    return;
+  }
+  if (entry) {
+    entry.value = `${entry.value || ''}${textToInsert}`;
+    entry.focus();
+  }
 }
 
 function updateInlineSuggestions() {
@@ -2604,30 +2706,13 @@ function openTaskModal() {
 function openDashboardQuickTask() {
   setPage('notas');
 
-  if (!notesInboxLines.length) {
-    notesInboxLines = [{ id: crypto.randomUUID(), text: '' }];
-  }
-
-  let targetLine = getInboxLineById(activeInboxLineId) || notesInboxLines[0];
-  if (!targetLine) return;
-
-  if (String(targetLine.text || '').trim()) {
-    const nextLine = { id: crypto.randomUUID(), text: '' };
-    const idx = notesInboxLines.findIndex(line => line.id === targetLine.id);
-    if (idx >= 0) {
-      notesInboxLines.splice(idx + 1, 0, nextLine);
-    } else {
-      notesInboxLines.push(nextLine);
-    }
-    targetLine = nextLine;
-  }
-
-  activeInboxLineId = targetLine.id;
-  saveInboxLines();
-  renderInboxEditor(targetLine.id, { start: targetLine.text.length, end: targetLine.text.length });
-  renderInboxPreview();
+  renderInboxEditor();
   setInboxFocusMode(true);
-  ensureInboxComposerVisible();
+  const entry = document.getElementById('notes-inbox-entry');
+  if (entry) {
+    entry.focus();
+    entry.setSelectionRange(entry.value.length, entry.value.length);
+  }
 }
 
 function closeTaskModal(e) {
