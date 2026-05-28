@@ -307,6 +307,18 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 }
 .page-title { font-size: 20px; font-weight: 600; color: var(--text); }
 .page-sub   { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.page-header-notes {
+  margin-bottom: 12px;
+}
+.page-header-notes .page-header-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.page-header-notes .page-sub {
+  margin-top: 0;
+}
 .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* BUTTONS */
@@ -538,7 +550,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-card .panel-body { padding: 0; }
 .notes-card .task-item { padding: 8px 12px; }
 #notes-today-list {
-  max-height: 255px;
+  max-height: 228px;
   overflow-y: auto;
 }
 .notes-body { padding: 10px 12px; }
@@ -1195,8 +1207,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 
       <!-- NOTAS -->
       <div class="page active" id="page-notas">
-        <div class="page-header">
-          <div>
+        <div class="page-header page-header-notes">
+          <div class="page-header-copy">
             <div class="page-title">Notas</div>
             <div class="page-sub">Escribe libre y conviertelo en pendientes del dia</div>
           </div>
