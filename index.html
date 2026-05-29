@@ -1351,6 +1351,9 @@ let notesInboxLines = [];
 let activeInboxLineId = null;
 let notesSyncTimers = {};
 let draggedInboxLineId = null;
+let inboxCloudAvailable = null;
+let inboxCloudSyncTimer = null;
+let isHydratingInboxFromCloud = false;
 let selectedVentureId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -1455,7 +1458,7 @@ async function loadApp() {
   await loadUserProfile();
   await Promise.all([loadVentures(), loadTasks(), loadActivity(), loadUsers()]);
   await loadNotesToday();
-  bindNotesInbox();
+  await bindNotesInbox();
   renderDashboard();
   setDate();
 }
@@ -1798,6 +1801,7 @@ function getNotesLinkMapKey() {
 
 function saveNotesLinkMap() {
   localStorage.setItem(getNotesLinkMapKey(), JSON.stringify(notesTaskLinkMap));
+  scheduleInboxCloudSync();
 }
 
 function toLineObjects(raw) {
@@ -1822,18 +1826,106 @@ function toLineObjects(raw) {
 function saveInboxLines() {
   if (!notesInboxLines.length) {
     localStorage.removeItem(getNotesDraftKey());
+    scheduleInboxCloudSync();
     return;
   }
   localStorage.setItem(getNotesDraftKey(), JSON.stringify(notesInboxLines));
+  scheduleInboxCloudSync();
 }
 
-function bindNotesInbox() {
+async function bindNotesInbox() {
   const saved = localStorage.getItem(getNotesDraftKey()) || '';
   notesTaskLinkMap = JSON.parse(localStorage.getItem(getNotesLinkMapKey()) || '{}');
   notesInboxLines = toLineObjects(saved);
+
+  if (await canUseInboxCloud()) {
+    await loadInboxFromCloud();
+  }
+
   activeInboxLineId = notesInboxLines[0]?.id || null;
   renderInboxEditor();
   renderInboxPreview();
+}
+
+async function canUseInboxCloud() {
+  if (inboxCloudAvailable !== null) return inboxCloudAvailable;
+  const profileId = await ensureCurrentProfileId();
+  if (!profileId) {
+    inboxCloudAvailable = false;
+    return false;
+  }
+
+  const { error } = await sb.from('inbox_notes').select('id').eq('user_id', profileId).limit(1);
+  inboxCloudAvailable = !error;
+  if (error) {
+    console.warn('Inbox cloud deshabilitado. Falta tabla inbox_notes o permisos.', error.message || error);
+  }
+  return inboxCloudAvailable;
+}
+
+async function loadInboxFromCloud() {
+  const profileId = await ensureCurrentProfileId();
+  if (!profileId) return;
+
+  const { data, error } = await sb.from('inbox_notes')
+    .select('id,content,position,task_id,created_at')
+    .eq('user_id', profileId)
+    .order('position', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.warn('No se pudo cargar inbox_notes desde Supabase.', error.message || error);
+    return;
+  }
+
+  isHydratingInboxFromCloud = true;
+  notesInboxLines = (data || []).map(row => ({ id: row.id, text: String(row.content || '') }));
+  notesTaskLinkMap = {};
+  for (const row of data || []) {
+    if (row.task_id) notesTaskLinkMap[row.id] = { taskId: row.task_id };
+  }
+  localStorage.setItem(getNotesDraftKey(), JSON.stringify(notesInboxLines));
+  localStorage.setItem(getNotesLinkMapKey(), JSON.stringify(notesTaskLinkMap));
+  isHydratingInboxFromCloud = false;
+}
+
+function scheduleInboxCloudSync() {
+  if (isHydratingInboxFromCloud) return;
+  if (inboxCloudSyncTimer) clearTimeout(inboxCloudSyncTimer);
+  inboxCloudSyncTimer = setTimeout(async () => {
+    await syncInboxToCloud();
+  }, 350);
+}
+
+async function syncInboxToCloud() {
+  if (!(await canUseInboxCloud())) return;
+  const profileId = await ensureCurrentProfileId();
+  if (!profileId) return;
+
+  const payload = notesInboxLines.map((line, idx) => ({
+    id: line.id,
+    user_id: profileId,
+    content: String(line.text || ''),
+    position: idx,
+    task_id: notesTaskLinkMap[line.id]?.taskId || null,
+    updated_at: new Date().toISOString()
+  }));
+
+  if (payload.length) {
+    const { error: upsertError } = await sb.from('inbox_notes').upsert(payload, { onConflict: 'id' });
+    if (upsertError) {
+      console.warn('No se pudo sincronizar inbox_notes.', upsertError.message || upsertError);
+      return;
+    }
+  }
+
+  const { data: existingRows, error: existingError } = await sb.from('inbox_notes').select('id').eq('user_id', profileId);
+  if (existingError) return;
+  const currentIds = new Set(notesInboxLines.map(l => String(l.id)));
+  const toDelete = (existingRows || []).map(r => r.id).filter(id => !currentIds.has(String(id)));
+  if (toDelete.length) {
+    await sb.from('inbox_notes').delete().in('id', toDelete).eq('user_id', profileId);
+  }
 }
 
 function renderInboxEditor(preferredFocusLineId = null, preferredSelection = null) {
