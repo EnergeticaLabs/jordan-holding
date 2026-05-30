@@ -460,6 +460,33 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   font-size: 12px; font-weight: 500; color: var(--text);
 }
 .metric-label { font-size: 9px; color: var(--text3); margin-top: 2px; line-height: 1.3; }
+.dashboard-alerts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 2px;
+}
+.dashboard-alert-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  font-size: 10px;
+  color: var(--text2);
+}
+.dashboard-alert-chip.warn {
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-color: rgba(217, 119, 6, 0.25);
+}
+.dashboard-alert-chip.danger {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: rgba(220, 38, 38, 0.25);
+}
 
 /* ══ BOTTOM GRID ══ */
 .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -1293,6 +1320,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
             <div class="kpi-delta up">promedio</div>
           </div>
         </div>
+        <div class="dashboard-alerts">
+          <div class="dashboard-alert-chip" id="kpi-bloqueadas">Bloqueadas: 0</div>
+          <div class="dashboard-alert-chip" id="kpi-vencidas">Vencidas: 0</div>
+        </div>
         <div class="section-header">
           <div class="section-title-sm">Estado de Ventures</div>
         </div>
@@ -1825,12 +1856,25 @@ function renderDashboard() {
   const total  = venturesData.length;
   const avg    = total ? Math.round(venturesData.reduce((s,v)=>s+getVentureProgress(v),0)/total) : 0;
   const urgentes = tasksData.filter(t=>t.prioridad==='urgente'||t.prioridad==='alta').length;
+  const blocked = tasksData.filter(t => (t.estado || 'pendiente') === 'bloqueado').length;
+  const overdue = tasksData.filter(t => isTaskOverdue(t)).length;
   document.getElementById('kpi-ventures').innerHTML = `${total}<span>/${total}</span>`;
   document.getElementById('kpi-tareas').textContent  = tasksData.length;
   document.getElementById('kpi-tareas-sub').textContent = urgentes>0 ? `⚠ ${urgentes} de alta prioridad` : 'Sin urgentes';
   document.getElementById('kpi-avance').innerHTML   = `${avg}<span>%</span>`;
   document.getElementById('kpi-equipo').innerHTML   = `2<span>/3</span>`;
   document.getElementById('kpi-equipo-sub').textContent = '1 posición por cubrir';
+
+  const blockedEl = document.getElementById('kpi-bloqueadas');
+  if (blockedEl) {
+    blockedEl.textContent = `Bloqueadas: ${blocked}`;
+    blockedEl.classList.toggle('danger', blocked > 0);
+  }
+  const overdueEl = document.getElementById('kpi-vencidas');
+  if (overdueEl) {
+    overdueEl.textContent = `Vencidas: ${overdue}`;
+    overdueEl.classList.toggle('warn', overdue > 0);
+  }
 
   // Ventures grid
   document.getElementById('ventures-grid').innerHTML = venturesData.map(v => {
@@ -1860,6 +1904,13 @@ function renderDashboard() {
   renderTeam();
   renderVenturesDetail();
   renderTareasPage();
+}
+
+function isTaskOverdue(task) {
+  if (!task?.fecha_limite) return false;
+  const state = task.estado || 'pendiente';
+  if (state === 'completado' || state === 'cancelado') return false;
+  return String(task.fecha_limite) < getLocalISODate();
 }
 
 function openVentureDetails(ventureId) {
