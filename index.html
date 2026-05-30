@@ -293,6 +293,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 }
 .sidebar-item:hover  { color: var(--text); background: var(--surface2); }
 .sidebar-item.active { color: var(--gold); border-left-color: var(--gold); background: var(--gold-bg); }
+.is-hidden { display: none !important; }
 .sidebar-icon  { font-size: 14px; width: 18px; text-align: center; }
 .sidebar-badge {
   margin-left: auto; font-size: 10px;
@@ -1125,11 +1126,11 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     <div class="topbar-active-page" id="topbar-active-page">Notas</div>
     <div class="topbar-sep"></div>
     <div class="topbar-nav">
-      <button class="nav-btn" onclick="setPage('dashboard')">Dashboard</button>
-      <button class="nav-btn" onclick="setPage('ventures')">Ventures</button>
-      <button class="nav-btn" onclick="setPage('tareas')">Tareas</button>
-      <button class="nav-btn active" onclick="setPage('notas')">Notas</button>
-      <button class="nav-btn" onclick="setPage('equipo')">Equipo</button>
+      <button class="nav-btn" data-page="dashboard" onclick="setPage('dashboard')">Dashboard</button>
+      <button class="nav-btn" data-page="ventures" onclick="setPage('ventures')">Ventures</button>
+      <button class="nav-btn" data-page="tareas" onclick="setPage('tareas')">Tareas</button>
+      <button class="nav-btn active" data-page="notas" onclick="setPage('notas')">Notas</button>
+      <button class="nav-btn" data-page="equipo" onclick="setPage('equipo')">Equipo</button>
     </div>
     <div class="topbar-right">
       <div class="user-chip" onclick="toggleUserMenu()">
@@ -1154,25 +1155,25 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     <div class="sidebar" id="sidebar">
       <div class="sidebar-section">
         <div class="sidebar-label">Principal</div>
-        <div class="sidebar-item" onclick="setPage('dashboard');closeSidebar()">
+        <div class="sidebar-item" data-page="dashboard" onclick="setPage('dashboard');closeSidebar()">
           <span class="sidebar-icon">⬡</span>Dashboard
         </div>
-        <div class="sidebar-item" onclick="setPage('ventures');closeSidebar()">
+        <div class="sidebar-item" data-page="ventures" onclick="setPage('ventures');closeSidebar()">
           <span class="sidebar-icon">◈</span>Ventures
           <span class="sidebar-badge" id="sb-ventures">8</span>
         </div>
-        <div class="sidebar-item" onclick="setPage('tareas');closeSidebar()">
+        <div class="sidebar-item" data-page="tareas" onclick="setPage('tareas');closeSidebar()">
           <span class="sidebar-icon">✓</span>Tareas
           <span class="sidebar-badge" id="sb-tareas">—</span>
         </div>
-        <div class="sidebar-item active" onclick="setPage('notas');closeSidebar()">
+        <div class="sidebar-item active" data-page="notas" onclick="setPage('notas');closeSidebar()">
           <span class="sidebar-icon">✎</span>Notas
         </div>
-        <div class="sidebar-item" onclick="setPage('equipo');closeSidebar()">
+        <div class="sidebar-item" data-page="equipo" onclick="setPage('equipo');closeSidebar()">
           <span class="sidebar-icon">◎</span>Equipo
         </div>
       </div>
-      <div class="sidebar-section">
+      <div class="sidebar-section" id="sidebar-ventures-section">
         <div class="sidebar-label">Ventures</div>
         <div id="sidebar-ventures"></div>
       </div>
@@ -1201,7 +1202,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <div class="page" id="page-dashboard">
         <div class="page-header">
           <div class="page-header-copy">
-            <div class="page-title">Dashboard</div>
+            <div class="page-title" id="dashboard-page-title">Dashboard</div>
             <div class="page-sub" id="dash-date"></div>
           </div>
           <div class="header-actions">
@@ -1266,7 +1267,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <div class="page" id="page-tareas">
         <div class="page-header">
           <div class="page-header-copy">
-            <div class="page-title">Tareas</div>
+            <div class="page-title" id="tareas-page-title">Tareas</div>
             <div class="page-sub" id="tareas-sub"></div>
           </div>
           <button class="btn btn-primary-sm" onclick="openTaskModal()">+ Nueva tarea</button>
@@ -1449,6 +1450,9 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 let currentUser = null;
 let currentProfileId = null;
+let currentUserRole = 'owner';
+let currentUserNameNormalized = '';
+let allowedVentureIds = null;
 let venturesData = [];
 let tasksData    = [];
 let tasksProgressData = [];
@@ -1566,6 +1570,7 @@ document.addEventListener('click', e => {
 // ── LOAD APP ──
 async function loadApp() {
   document.getElementById('app').classList.add('visible');
+  await loadUserProfile();
   loadTaskBriefs();
 
   // Render instantaneo de Notas desde cache/local mientras llegan datos remotos.
@@ -1575,9 +1580,15 @@ async function loadApp() {
   setDate();
 
   // Carga remota en segundo plano para no bloquear primer paint en mobile.
-  await loadUserProfile();
-  await Promise.all([loadVentures(), loadTasks(), loadActivity(), loadUsers()]);
+  await loadVentures();
+  await Promise.all([loadTasks(), loadActivity(), loadUsers()]);
   renderDashboard();
+  const defaultPageByRole = {
+    owner: 'notas',
+    manager: 'dashboard',
+    executor: 'tareas'
+  };
+  setPage(defaultPageByRole[currentUserRole] || 'notas');
 }
 
 async function loadUsers() {
@@ -1601,10 +1612,69 @@ async function loadUserProfile() {
   const { data } = await sb.from('users').select('*').eq('auth_id', currentUser.id).single();
   const profile = data || { nombre: currentUser.email.split('@')[0], rol: 'owner' };
   currentProfileId = profile.id || null;
+  currentUserRole = profile.rol || 'owner';
+  currentUserNameNormalized = normalizeText(profile.nombre || '').replace(/\s+/g, '');
+  await loadRoleAccess(profile);
+  applyRoleVisibility();
   const rolLabels = { owner:'Fundador', manager:'Supervisor', executor:'Ejecutor' };
   document.getElementById('top-name').textContent   = profile.nombre;
   document.getElementById('top-role').textContent   = rolLabels[profile.rol] || profile.rol;
   document.getElementById('top-avatar').textContent = profile.nombre.slice(0,2).toUpperCase();
+
+  const dashTitle = document.getElementById('dashboard-page-title');
+  if (dashTitle) dashTitle.textContent = currentUserRole === 'manager' ? 'Supervisión' : 'Dashboard';
+  const tareasTitle = document.getElementById('tareas-page-title');
+  if (tareasTitle) tareasTitle.textContent = currentUserRole === 'executor' ? 'Mi trabajo' : 'Tareas';
+}
+
+async function loadRoleAccess(profile) {
+  if (!profile?.id || profile.rol !== 'manager') {
+    allowedVentureIds = null;
+    return;
+  }
+
+  const { data, error } = await sb.from('roles_permissions').select('*').eq('user_id', profile.id);
+  if (error || !Array.isArray(data) || !data.length) {
+    // Fallback: manager con acceso total si no hay permisos configurados.
+    allowedVentureIds = null;
+    return;
+  }
+
+  const ids = data
+    .map(row => row.venture_id || row.ventureId || null)
+    .filter(Boolean)
+    .map(id => String(id));
+  allowedVentureIds = ids.length ? new Set(ids) : null;
+}
+
+function getAllowedPagesByRole() {
+  if (currentUserRole === 'executor') return ['tareas', 'notas'];
+  if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'notas'];
+  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo'];
+}
+
+function applyRoleVisibility() {
+  const allowedPages = new Set(getAllowedPagesByRole());
+  document.querySelectorAll('.nav-btn[data-page], .sidebar-item[data-page]').forEach(el => {
+    const page = el.getAttribute('data-page');
+    el.classList.toggle('is-hidden', !allowedPages.has(page));
+  });
+
+  const venturesSection = document.getElementById('sidebar-ventures-section');
+  if (venturesSection) venturesSection.classList.toggle('is-hidden', currentUserRole === 'executor');
+}
+
+function isVentureAllowedForCurrentRole(ventureId) {
+  if (currentUserRole !== 'manager') return true;
+  if (!allowedVentureIds || !allowedVentureIds.size) return true;
+  return allowedVentureIds.has(String(ventureId));
+}
+
+function taskAssignedToCurrentExecutor(task) {
+  if (currentUserRole !== 'executor') return true;
+  const meta = parseTaskMeta(task?.titulo || '');
+  if (!meta.assignees.length || !currentUserNameNormalized) return false;
+  return meta.assignees.some(a => normalizeText(a).replace(/\s+/g, '') === currentUserNameNormalized);
 }
 
 async function ensureCurrentProfileId() {
@@ -1620,7 +1690,7 @@ async function ensureCurrentProfileId() {
 
 async function loadVentures() {
   const { data } = await sb.from('ventures').select('*, venture_metrics(*)').order('orden');
-  venturesData = data || [];
+  venturesData = (data || []).filter(v => isVentureAllowedForCurrentRole(v.id));
   document.getElementById('sb-ventures').textContent = venturesData.length;
   document.getElementById('sidebar-ventures').innerHTML = venturesData.map(v => `
     <div class="sidebar-item" onclick="openVentureDetails('${v.id}');closeSidebar()">
@@ -1643,13 +1713,27 @@ async function loadTasks() {
     .select('*, ventures(nombre,emoji)')
     .neq('estado','completado').neq('estado','cancelado')
     .order('fecha_limite', { ascending:true, nullsFirst:false });
-  tasksData = data || [];
+  let scopedTasks = data || [];
+  if (currentUserRole === 'manager' && allowedVentureIds && allowedVentureIds.size) {
+    scopedTasks = scopedTasks.filter(t => t.venture_id && allowedVentureIds.has(String(t.venture_id)));
+  }
+  if (currentUserRole === 'executor') {
+    scopedTasks = scopedTasks.filter(taskAssignedToCurrentExecutor);
+  }
+  tasksData = scopedTasks;
 
   // Dataset para calcular avance dinamico por venture
   const { data: progressData } = await sb.from('tasks')
     .select('id,venture_id,estado,titulo,prioridad,fecha_limite,completado_en')
     .neq('estado', 'cancelado');
-  tasksProgressData = progressData || [];
+  let scopedProgress = progressData || [];
+  if (currentUserRole === 'manager' && allowedVentureIds && allowedVentureIds.size) {
+    scopedProgress = scopedProgress.filter(t => t.venture_id && allowedVentureIds.has(String(t.venture_id)));
+  }
+  if (currentUserRole === 'executor') {
+    scopedProgress = scopedProgress.filter(taskAssignedToCurrentExecutor);
+  }
+  tasksProgressData = scopedProgress;
 
   document.getElementById('sb-tareas').textContent = tasksData.length;
 }
@@ -1717,6 +1801,7 @@ function renderDashboard() {
 }
 
 function openVentureDetails(ventureId) {
+  if (!isVentureAllowedForCurrentRole(ventureId)) return;
   selectedVentureId = ventureId || null;
   setPage('ventures');
   renderVenturesDetail();
@@ -2819,7 +2904,14 @@ async function loadNotesToday() {
     .or(`fecha_limite.lte.${today},fecha_limite.is.null`)
     .neq('estado', 'cancelado')
     .order('id', { ascending: false });
-  notesTodayData = data || [];
+  let scopedNotes = data || [];
+  if (currentUserRole === 'manager' && allowedVentureIds && allowedVentureIds.size) {
+    scopedNotes = scopedNotes.filter(t => t.venture_id && allowedVentureIds.has(String(t.venture_id)));
+  }
+  if (currentUserRole === 'executor') {
+    scopedNotes = scopedNotes.filter(taskAssignedToCurrentExecutor);
+  }
+  notesTodayData = scopedNotes;
   localStorage.setItem(getNotesTodayCacheKey(), JSON.stringify(notesTodayData));
   renderNotesToday();
   purgeCompletedInboxLines();
@@ -3164,12 +3256,16 @@ async function logActivity(accion) {
 
 // ── NAV ──
 function setPage(id) {
+  const allowedPages = getAllowedPagesByRole();
+  if (!allowedPages.includes(id)) {
+    id = allowedPages[0] || 'notas';
+  }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
   const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
-  const pageNames={dashboard:'Dashboard',ventures:'Ventures',tareas:'Tareas',notas:'Notas',equipo:'Equipo'};
+  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo'};
   if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
   const activePageLabel = document.getElementById('topbar-active-page');
   if (activePageLabel) activePageLabel.textContent = pageNames[id] || 'Panel';
