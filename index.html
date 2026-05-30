@@ -1455,13 +1455,17 @@ document.addEventListener('click', e => {
 // ── LOAD APP ──
 async function loadApp() {
   document.getElementById('app').classList.add('visible');
-  await loadUserProfile();
-  await Promise.all([loadVentures(), loadTasks(), loadActivity(), loadUsers()]);
+
+  // Render instantaneo de Notas desde cache/local mientras llegan datos remotos.
   hydrateNotesTodayFromCache();
   bindNotesInbox();
   loadNotesToday();
-  renderDashboard();
   setDate();
+
+  // Carga remota en segundo plano para no bloquear primer paint en mobile.
+  await loadUserProfile();
+  await Promise.all([loadVentures(), loadTasks(), loadActivity(), loadUsers()]);
+  renderDashboard();
 }
 
 async function loadUsers() {
@@ -2944,7 +2948,7 @@ init();
 // ── PWA: REGISTRAR SERVICE WORKER ──
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js?v=20260523-3")
+    navigator.serviceWorker.register("/sw.js?v=20260530-1")
       .then(reg => console.log("SW registrado:", reg.scope))
       .catch(err => console.log("SW error:", err));
   });
