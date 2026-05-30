@@ -1254,7 +1254,6 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <button class="nav-btn" data-page="tareas" onclick="setPage('tareas')">Tareas</button>
       <button class="nav-btn active" data-page="notas" onclick="setPage('notas')">Notas</button>
       <button class="nav-btn" data-page="equipo" onclick="setPage('equipo')">Equipo</button>
-      <button class="nav-btn" data-page="configuracion" onclick="setPage('configuracion')">Configuración</button>
     </div>
     <div class="topbar-right">
       <div class="user-chip" onclick="toggleUserMenu()">
@@ -1295,9 +1294,6 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         </div>
         <div class="sidebar-item" data-page="equipo" onclick="setPage('equipo');closeSidebar()">
           <span class="sidebar-icon">◎</span>Equipo
-        </div>
-        <div class="sidebar-item" data-page="configuracion" onclick="setPage('configuracion');closeSidebar()">
-          <span class="sidebar-icon">⚙</span>Configuración
         </div>
       </div>
       <div class="sidebar-section" id="sidebar-ventures-section">
@@ -1473,29 +1469,15 @@ select.form-input option { background: var(--surface2); color: var(--text); }
             </div>
           </div>
             <div class="page-title">Equipo</div>
-            <div class="page-sub">Miembros y roles del holding</div>
+            <div class="page-sub">Gestiona miembros, roles y acceso desde aquí</div>
           </div>
         </div>
         <div class="panel" style="max-width:600px;">
-          <div class="panel-header"><div class="panel-title">Miembros del equipo</div></div>
-          <div class="panel-body" id="team-list"></div>
-        </div>
-      </div>
-
-      <!-- CONFIGURACION -->
-      <div class="page" id="page-configuracion">
-        <div class="page-header">
-          <div class="page-header-copy">
-            <div class="page-title">Configuración</div>
-            <div class="page-sub">Gestión de usuarios, roles y acceso</div>
-          </div>
-        </div>
-        <div class="panel" style="max-width:900px;">
           <div class="panel-header">
-            <div class="panel-title">Usuarios del sistema</div>
-            <span class="empty-sub">Solo visible para owner</span>
+            <div class="panel-title">Miembros del equipo</div>
+            <div id="team-panel-actions"></div>
           </div>
-          <div class="panel-body" id="config-users-list"></div>
+          <div class="panel-body" id="team-list"></div>
         </div>
       </div>
 
@@ -1589,6 +1571,14 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">Editar usuario</div>
     <div class="modal-sub" id="user-config-title">Actualizar rol, correo y seguridad</div>
+    <div class="form-group">
+      <label class="form-label">Nombre</label>
+      <input type="text" class="form-input" id="config-user-name" placeholder="Nombre del miembro">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Auth UUID (opcional para nuevos)</label>
+      <input type="text" class="form-input" id="config-user-authid" placeholder="UUID de auth.users o vacío para generar">
+    </div>
     <div class="form-group">
       <label class="form-label">Rol</label>
       <select class="form-input" id="config-user-rol">
@@ -1787,7 +1777,7 @@ async function loadUsers() {
       usersData.map(u => `<option value="${u.id}">${escapeHtml(u.nombre)}</option>`).join('');
   }
 
-  renderConfigUsers();
+  renderTeam();
 }
 
 async function loadUserProfile() {
@@ -1832,7 +1822,7 @@ async function loadRoleAccess(profile) {
 function getAllowedPagesByRole() {
   if (currentUserRole === 'executor') return ['tareas', 'notas'];
   if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'notas'];
-  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo', 'configuracion'];
+  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo'];
 }
 
 function applyRoleVisibility() {
@@ -3488,31 +3478,14 @@ function escapeHtml(value) {
 }
 
 function renderTeam() {
-  document.getElementById('team-list').innerHTML = `
-    <div class="team-row">
-      <div class="team-avatar" style="background:var(--gold-bg);color:var(--gold)">JB</div>
-      <div class="team-info"><div class="team-name">Jordan Blancas</div><div class="team-role">Fundador · Ing. Mecánico Electricista</div></div>
-      <span class="team-status" style="background:var(--green-bg);color:var(--green)">Activo</span>
-    </div>
-    <div class="team-row">
-      <div class="team-avatar" style="background:var(--blue-bg);color:var(--blue)">HB</div>
-      <div class="team-info"><div class="team-name">Supervisor Creativo</div><div class="team-role">Por confirmar · Publimania.pe</div></div>
-      <span class="team-status" style="background:var(--amber-bg);color:var(--amber)">Pendiente</span>
-    </div>
-    <div class="team-row">
-      <div class="team-avatar" style="background:var(--surface3);color:var(--text3)">?</div>
-      <div class="team-info"><div class="team-name">Ejecutor Creativo</div><div class="team-role">Estudiante · S/600 · Remoto + campo</div></div>
-      <span class="team-status" style="background:var(--surface3);color:var(--text3)">Por contratar</span>
-    </div>`;
-}
-
-function renderConfigUsers() {
-  const container = document.getElementById('config-users-list');
-  if (!container) return;
-  if (currentUserRole !== 'owner') {
-    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">Solo el owner puede gestionar usuarios</div></div>`;
-    return;
+  const container = document.getElementById('team-list');
+  const actions = document.getElementById('team-panel-actions');
+  if (actions) {
+    actions.innerHTML = currentUserRole === 'owner'
+      ? `<button type="button" class="task-action-btn" onclick="openUserConfigModal()">+ Agregar miembro</button>`
+      : '';
   }
+  if (!container) return;
   if (!usersData.length) {
     container.innerHTML = `<div class="empty-state"><div class="empty-icon">◎</div><div class="empty-text">No hay usuarios registrados</div></div>`;
     return;
@@ -3529,32 +3502,39 @@ function renderConfigUsers() {
         </div>
       </div>
       <div class="config-user-actions">
-        <button type="button" class="task-action-btn" onclick="openUserConfigModal('${u.id}')">Editar</button>
+        ${currentUserRole === 'owner' ? `<button type="button" class="task-action-btn" onclick="openUserConfigModal('${u.id}')">Editar</button>` : ''}
+        ${currentUserRole === 'owner' && String(u.id) !== String(currentProfileId) ? `<button type="button" class="task-action-btn" onclick="removeTeamUser('${u.id}')">Quitar</button>` : ''}
       </div>
     </div>
   `).join('');
 }
 
-function openUserConfigModal(userId) {
+function openUserConfigModal(userId = null) {
   if (currentUserRole !== 'owner') return;
-  const user = usersData.find(u => String(u.id) === String(userId));
-  if (!user) return;
-  activeConfigUserId = String(user.id);
+  const user = userId ? usersData.find(u => String(u.id) === String(userId)) : null;
+  if (userId && !user) return;
+  activeConfigUserId = user ? String(user.id) : null;
 
   const modal = document.getElementById('user-config-modal');
   if (!modal) return;
   const title = document.getElementById('user-config-title');
-  if (title) title.textContent = `Editar ${user.nombre || user.email || 'usuario'}`;
+  if (title) title.textContent = user ? `Editar ${user.nombre || user.email || 'usuario'}` : 'Agregar miembro';
+  const nameEl = document.getElementById('config-user-name');
+  if (nameEl) nameEl.value = user?.nombre || '';
+  const authIdEl = document.getElementById('config-user-authid');
+  if (authIdEl) authIdEl.value = user?.auth_id || '';
   const roleEl = document.getElementById('config-user-rol');
-  if (roleEl) roleEl.value = user.rol || 'executor';
+  if (roleEl) roleEl.value = user?.rol || 'executor';
   const emailEl = document.getElementById('config-user-email');
-  if (emailEl) emailEl.value = user.email || '';
+  if (emailEl) emailEl.value = user?.email || '';
   const passEl = document.getElementById('config-user-password');
   if (passEl) passEl.value = '';
 
   const hint = document.getElementById('config-user-password-hint');
   if (hint) {
-    hint.textContent = String(user.id) === String(currentProfileId)
+    hint.textContent = !user
+      ? 'Si el miembro aún no tiene acceso, puedes guardar con auth_id vacío (se genera uno temporal).'
+      : String(user.id) === String(currentProfileId)
       ? 'Puedes cambiar tu contraseña aquí. Para otros usuarios usa "Enviar reset".'
       : 'Para otros usuarios, envía reset por correo (cambio directo bloqueado por seguridad de Supabase).';
   }
@@ -3571,26 +3551,45 @@ function closeUserConfigModal(e) {
 
 async function saveUserConfig() {
   if (currentUserRole !== 'owner') return;
-  if (!activeConfigUserId) return;
-  const user = usersData.find(u => String(u.id) === String(activeConfigUserId));
-  if (!user) return;
+  const user = activeConfigUserId ? usersData.find(u => String(u.id) === String(activeConfigUserId)) : null;
 
+  const nombre = String(document.getElementById('config-user-name')?.value || '').trim();
+  const authIdInput = String(document.getElementById('config-user-authid')?.value || '').trim();
   const rol = document.getElementById('config-user-rol')?.value || 'executor';
   const email = String(document.getElementById('config-user-email')?.value || '').trim();
   const newPassword = String(document.getElementById('config-user-password')?.value || '').trim();
+  if (!nombre) {
+    alert('El nombre no puede estar vacío.');
+    return;
+  }
   if (!email) {
     alert('El correo no puede estar vacío.');
     return;
   }
 
-  const { error: profileError } = await sb.from('users').update({ rol, email }).eq('id', activeConfigUserId);
-  if (profileError) {
-    alert(`No se pudo actualizar el perfil interno: ${profileError.message || ''}`);
+  if (!user) {
+    const auth_id = authIdInput || crypto.randomUUID();
+    const { error: insertError } = await sb.from('users').insert({ auth_id, nombre, email, rol });
+    if (insertError) {
+      alert(`No se pudo crear el miembro: ${insertError.message || ''}`);
+      return;
+    }
+    await logActivity('agregó un nuevo miembro del equipo');
+    await loadUsers();
+    closeUserConfigModal();
     return;
+  } else {
+    const updatePayload = { nombre, rol, email };
+    if (authIdInput) updatePayload.auth_id = authIdInput;
+    const { error: profileError } = await sb.from('users').update(updatePayload).eq('id', activeConfigUserId);
+    if (profileError) {
+      alert(`No se pudo actualizar el perfil interno: ${profileError.message || ''}`);
+      return;
+    }
   }
 
   // Solo se puede actualizar credenciales de auth de la sesión actual con anon key.
-  const isSelf = String(user.id) === String(currentProfileId);
+  const isSelf = !!user && String(user.id) === String(currentProfileId);
   if (isSelf && email !== (currentUser?.email || '')) {
     const { error: authEmailError } = await sb.auth.updateUser({ email });
     if (authEmailError) {
@@ -3610,9 +3609,27 @@ async function saveUserConfig() {
     }
   }
 
-  await logActivity('actualizó configuración de usuario y rol');
+  await logActivity('actualizó miembro del equipo y rol');
   await loadUsers();
   closeUserConfigModal();
+}
+
+async function removeTeamUser(userId) {
+  if (currentUserRole !== 'owner') return;
+  if (String(userId) === String(currentProfileId)) {
+    alert('No puedes eliminar tu propio usuario owner.');
+    return;
+  }
+  const ok = confirm('¿Seguro que quieres quitar este miembro del equipo?');
+  if (!ok) return;
+
+  const { error } = await sb.from('users').delete().eq('id', userId);
+  if (error) {
+    alert(`No se pudo quitar el miembro: ${error.message || ''}`);
+    return;
+  }
+  await logActivity('eliminó un miembro del equipo');
+  await loadUsers();
 }
 
 async function sendUserPasswordReset() {
@@ -3746,8 +3763,8 @@ function setPage(id) {
   document.getElementById('page-'+id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
-  const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4,configuracion:5};
-  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',configuracion:'Configuración'};
+  const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
+  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo'};
   if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
   const activePageLabel = document.getElementById('topbar-active-page');
   if (activePageLabel) activePageLabel.textContent = pageNames[id] || 'Panel';
@@ -3788,6 +3805,7 @@ window.openUserConfigModal = openUserConfigModal;
 window.closeUserConfigModal = closeUserConfigModal;
 window.saveUserConfig = saveUserConfig;
 window.sendUserPasswordReset = sendUserPasswordReset;
+window.removeTeamUser = removeTeamUser;
 
 init();
 
