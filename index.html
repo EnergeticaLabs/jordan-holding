@@ -476,6 +476,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   background: var(--surface2);
   font-size: 10px;
   color: var(--text2);
+  cursor: pointer;
+  user-select: none;
 }
 .dashboard-alert-chip.warn {
   background: var(--amber-bg);
@@ -486,6 +488,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   background: var(--red-bg);
   color: var(--red);
   border-color: rgba(220, 38, 38, 0.25);
+}
+.dashboard-alert-chip.active {
+  outline: 2px solid var(--gold-dim);
+  outline-offset: 1px;
 }
 
 /* ══ BOTTOM GRID ══ */
@@ -1321,8 +1327,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
           </div>
         </div>
         <div class="dashboard-alerts">
-          <div class="dashboard-alert-chip" id="kpi-bloqueadas">Bloqueadas: 0</div>
-          <div class="dashboard-alert-chip" id="kpi-vencidas">Vencidas: 0</div>
+          <div class="dashboard-alert-chip" id="kpi-bloqueadas" onclick="openTasksWithQuickFilter('blocked')">Bloqueadas: 0</div>
+          <div class="dashboard-alert-chip" id="kpi-vencidas" onclick="openTasksWithQuickFilter('overdue')">Vencidas: 0</div>
         </div>
         <div class="section-header">
           <div class="section-title-sm">Estado de Ventures</div>
@@ -1546,6 +1552,7 @@ let currentProfileId = null;
 let currentUserRole = 'owner';
 let currentUserNameNormalized = '';
 let allowedVentureIds = null;
+let currentTasksQuickFilter = 'all';
 let venturesData = [];
 let tasksData    = [];
 let tasksProgressData = [];
@@ -1770,6 +1777,29 @@ function taskAssignedToCurrentExecutor(task) {
   return meta.assignees.some(a => normalizeText(a).replace(/\s+/g, '') === currentUserNameNormalized);
 }
 
+function getQuickFilteredTasks(items) {
+  if (!Array.isArray(items)) return [];
+  if (currentTasksQuickFilter === 'blocked') {
+    return items.filter(t => (t.estado || 'pendiente') === 'bloqueado');
+  }
+  if (currentTasksQuickFilter === 'overdue') {
+    return items.filter(isTaskOverdue);
+  }
+  return items;
+}
+
+function getQuickFilterLabel() {
+  if (currentTasksQuickFilter === 'blocked') return 'bloqueadas';
+  if (currentTasksQuickFilter === 'overdue') return 'vencidas';
+  return null;
+}
+
+function openTasksWithQuickFilter(filterType) {
+  currentTasksQuickFilter = currentTasksQuickFilter === filterType ? 'all' : filterType;
+  setPage('tareas');
+  renderTareasPage();
+}
+
 async function ensureCurrentProfileId() {
   if (currentProfileId) return currentProfileId;
   if (!currentUser?.id) return null;
@@ -1869,11 +1899,13 @@ function renderDashboard() {
   if (blockedEl) {
     blockedEl.textContent = `Bloqueadas: ${blocked}`;
     blockedEl.classList.toggle('danger', blocked > 0);
+    blockedEl.classList.toggle('active', currentTasksQuickFilter === 'blocked');
   }
   const overdueEl = document.getElementById('kpi-vencidas');
   if (overdueEl) {
     overdueEl.textContent = `Vencidas: ${overdue}`;
     overdueEl.classList.toggle('warn', overdue > 0);
+    overdueEl.classList.toggle('active', currentTasksQuickFilter === 'overdue');
   }
 
   // Ventures grid
@@ -2097,20 +2129,26 @@ async function moveTaskInVentureKanban(taskId, nextState) {
 
 function renderTareasPage() {
   const el = document.getElementById('tareas-list');
-  document.getElementById('tareas-sub').textContent = currentUserRole === 'executor'
-    ? `${tasksData.length} tareas activas`
-    : `${tasksData.length} tareas pendientes`;
-  if (!tasksData.length) {
+  const filteredTasks = getQuickFilteredTasks(tasksData);
+  const filterLabel = getQuickFilterLabel();
+  const subtitleBase = currentUserRole === 'executor'
+    ? `${filteredTasks.length} tareas activas`
+    : `${filteredTasks.length} tareas pendientes`;
+  document.getElementById('tareas-sub').textContent = filterLabel
+    ? `${subtitleBase} · filtro: ${filterLabel}`
+    : subtitleBase;
+
+  if (!filteredTasks.length) {
     el.innerHTML=`<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div><div class="empty-sub">Crea una nueva tarea para comenzar</div></div>`;
     return;
   }
 
   if (currentUserRole === 'executor') {
-    renderExecutorBoard(el);
+    renderExecutorBoard(el, filteredTasks);
     return;
   }
 
-  el.innerHTML=`<div class="panel"><div class="panel-body">${tasksData.map(t=>`
+  el.innerHTML=`<div class="panel"><div class="panel-body">${filteredTasks.map(t=>`
     <div class="task-item">
       <div class="task-check" onclick="toggleTask('${t.id}',this)"></div>
       <div class="task-content">
@@ -2172,10 +2210,10 @@ function renderExecutorCard(task) {
   `;
 }
 
-function renderExecutorBoard(el) {
-  const backlog = tasksData.filter(t => ['pendiente', 'bloqueado'].includes(t.estado || 'pendiente'));
-  const inProgress = tasksData.filter(t => (t.estado || 'pendiente') === 'en_curso');
-  const delivered = tasksData.filter(t => (t.estado || 'pendiente') === 'entregado');
+function renderExecutorBoard(el, taskItems) {
+  const backlog = taskItems.filter(t => ['pendiente', 'bloqueado'].includes(t.estado || 'pendiente'));
+  const inProgress = taskItems.filter(t => (t.estado || 'pendiente') === 'en_curso');
+  const delivered = taskItems.filter(t => (t.estado || 'pendiente') === 'entregado');
 
   el.innerHTML = `
     <div class="executor-board">
