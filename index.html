@@ -3533,7 +3533,7 @@ function openUserConfigModal(userId = null) {
   const hint = document.getElementById('config-user-password-hint');
   if (hint) {
     hint.textContent = !user
-      ? 'Si el miembro aún no tiene acceso, puedes guardar con auth_id vacío (se genera uno temporal).'
+      ? 'Primero crea el usuario en Supabase Auth y pega aquí su UUID (auth.users.id).'
       : String(user.id) === String(currentProfileId)
       ? 'Puedes cambiar tu contraseña aquí. Para otros usuarios usa "Enviar reset".'
       : 'Para otros usuarios, envía reset por correo (cambio directo bloqueado por seguridad de Supabase).';
@@ -3568,10 +3568,27 @@ async function saveUserConfig() {
   }
 
   if (!user) {
-    const auth_id = authIdInput || crypto.randomUUID();
+    if (!authIdInput) {
+      alert('Para crear un miembro, primero crea el usuario en Supabase Auth y pega su UUID en Auth UUID.');
+      return;
+    }
+
+    const authIdLooksValid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(authIdInput);
+    if (!authIdLooksValid) {
+      alert('El Auth UUID no tiene formato válido. Debe ser el id exacto de auth.users.');
+      return;
+    }
+
+    const auth_id = authIdInput;
     const { error: insertError } = await sb.from('users').insert({ auth_id, nombre, email, rol });
     if (insertError) {
-      alert(`No se pudo crear el miembro: ${insertError.message || ''}`);
+      const msg = insertError.message || '';
+      const isFk = /users_auth_id_fkey|foreign key/i.test(msg);
+      if (isFk) {
+        alert('No se pudo crear el miembro porque ese Auth UUID no existe en Supabase Auth. Crea el usuario en Authentication > Users y usa ese id.');
+      } else {
+        alert(`No se pudo crear el miembro: ${msg}`);
+      }
       return;
     }
     await logActivity('agregó un nuevo miembro del equipo');
