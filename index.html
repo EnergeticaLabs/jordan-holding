@@ -1399,7 +1399,13 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 <div class="modal-overlay" id="task-brief-modal" style="display:none;" onclick="closeTaskBriefModal(event)">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">Ficha delegable</div>
-    <div class="modal-sub" id="brief-task-title">Define entregable, criterio y responsable</div>
+    <div class="modal-sub" id="brief-task-title">Define entidad, responsable, entregable y criterio</div>
+    <div class="form-group">
+      <label class="form-label">Entidad (venture)</label>
+      <select class="form-input" id="brief-venture">
+        <option value="">— Sin venture asignado —</option>
+      </select>
+    </div>
     <div class="form-group">
       <label class="form-label">Responsable</label>
       <select class="form-input" id="brief-responsable">
@@ -1624,6 +1630,12 @@ async function loadVentures() {
   const sel = document.getElementById('task-venture');
   sel.innerHTML = '<option value="">— Sin venture asignado —</option>' +
     venturesData.map(v => `<option value="${v.id}">${v.nombre}</option>`).join('');
+
+  const briefVenture = document.getElementById('brief-venture');
+  if (briefVenture) {
+    briefVenture.innerHTML = '<option value="">— Sin venture asignado —</option>' +
+      venturesData.map(v => `<option value="${v.id}">${v.nombre}</option>`).join('');
+  }
 }
 
 async function loadTasks() {
@@ -2837,6 +2849,8 @@ function renderTaskBriefInline(taskId) {
   const brief = getTaskBrief(taskId);
   if (!brief) return '';
   const parts = [];
+  const ventureName = getVentureNameById(brief.ventureId);
+  if (ventureName) parts.push(`Entidad: ${ventureName}`);
   if (brief.deliverable) parts.push(`Entregable: ${brief.deliverable}`);
   if (brief.criteria) parts.push(`Criterio: ${brief.criteria}`);
   if (brief.evidence) parts.push(`Evidencia: ${brief.evidence}`);
@@ -2852,6 +2866,18 @@ function ensureAssigneeTag(title, userId) {
   const tag = `@${normalizeText(user.nombre).replace(/\s+/g, '')}`;
   if (new RegExp(`(^|\\s)${tag}(\\s|$)`, 'i').test(title)) return title;
   return `${title} ${tag}`.trim();
+}
+
+function ensureEntityTag(title, ventureId) {
+  const base = String(title || '')
+    .replace(/(^|\s)#[a-zA-Z0-9_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!ventureId) return base;
+  const venture = venturesData.find(v => String(v.id) === String(ventureId));
+  if (!venture?.nombre) return base;
+  const tag = `#${normalizeText(venture.nombre).replace(/\s+/g, '')}`;
+  return `${base} ${tag}`.trim();
 }
 
 function purgeCompletedInboxLines() {
@@ -2941,6 +2967,8 @@ function openTaskBriefModal(taskId) {
   const task = notesTodayData.find(t => String(t.id) === activeTaskBriefTaskId);
   if (titleEl) titleEl.textContent = cleanTaskTitle(task?.titulo || 'Tarea');
 
+  const ventureEl = document.getElementById('brief-venture');
+  if (ventureEl) ventureEl.value = brief.ventureId || task?.venture_id || '';
   const sel = document.getElementById('brief-responsable');
   if (sel) sel.value = brief.assigneeId || '';
   const dateEl = document.getElementById('brief-fecha');
@@ -2967,13 +2995,14 @@ async function saveTaskBriefModal() {
   const task = notesTodayData.find(t => String(t.id) === String(activeTaskBriefTaskId));
   if (!task) { closeTaskBriefModal(); return; }
 
+  const ventureId = document.getElementById('brief-venture')?.value || '';
   const assigneeId = document.getElementById('brief-responsable')?.value || '';
   const commitDate = document.getElementById('brief-fecha')?.value || '';
   const deliverable = String(document.getElementById('brief-entregable')?.value || '').trim();
   const criteria = String(document.getElementById('brief-criterio')?.value || '').trim();
   const evidence = String(document.getElementById('brief-evidencia')?.value || '').trim();
 
-  const brief = { assigneeId, commitDate, deliverable, criteria, evidence };
+  const brief = { ventureId, assigneeId, commitDate, deliverable, criteria, evidence };
   const hasValues = Object.values(brief).some(v => String(v || '').trim());
   if (hasValues) {
     taskBriefMap[String(activeTaskBriefTaskId)] = brief;
@@ -2983,8 +3012,9 @@ async function saveTaskBriefModal() {
   saveTaskBriefs();
 
   const payload = {};
+  if (ventureId !== String(task.venture_id || '')) payload.venture_id = ventureId || null;
   if (commitDate) payload.fecha_limite = commitDate;
-  const nextTitle = ensureAssigneeTag(task.titulo, assigneeId);
+  const nextTitle = ensureAssigneeTag(ensureEntityTag(task.titulo, ventureId), assigneeId);
   if (nextTitle !== task.titulo) payload.titulo = nextTitle;
 
   if (Object.keys(payload).length) {
