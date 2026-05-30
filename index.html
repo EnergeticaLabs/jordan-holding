@@ -589,6 +589,34 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-bottom: 1px solid var(--border);
 }
 .executor-card:last-child { border-bottom: none; }
+
+/* ══ OWNER CONFIG ══ */
+.config-user-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.config-user-row:last-child { border-bottom: none; }
+.config-user-main { min-width: 0; }
+.config-user-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.config-user-email { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.config-user-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.config-role-chip {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface3);
+  color: var(--text2);
+}
+.config-role-chip.owner { background: var(--gold-bg); color: var(--gold-dim); }
+.config-role-chip.manager { background: var(--blue-bg); color: var(--blue); }
+.config-role-chip.executor { background: var(--green-bg); color: var(--green); }
+.config-user-actions { display: flex; gap: 6px; }
 .task-venture-tag {
   font-size: 10px; padding: 1px 6px; border-radius: 4px;
   background: var(--surface3); color: var(--text2);
@@ -1226,6 +1254,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <button class="nav-btn" data-page="tareas" onclick="setPage('tareas')">Tareas</button>
       <button class="nav-btn active" data-page="notas" onclick="setPage('notas')">Notas</button>
       <button class="nav-btn" data-page="equipo" onclick="setPage('equipo')">Equipo</button>
+      <button class="nav-btn" data-page="configuracion" onclick="setPage('configuracion')">Configuración</button>
     </div>
     <div class="topbar-right">
       <div class="user-chip" onclick="toggleUserMenu()">
@@ -1266,6 +1295,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         </div>
         <div class="sidebar-item" data-page="equipo" onclick="setPage('equipo');closeSidebar()">
           <span class="sidebar-icon">◎</span>Equipo
+        </div>
+        <div class="sidebar-item" data-page="configuracion" onclick="setPage('configuracion');closeSidebar()">
+          <span class="sidebar-icon">⚙</span>Configuración
         </div>
       </div>
       <div class="sidebar-section" id="sidebar-ventures-section">
@@ -1450,6 +1482,23 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         </div>
       </div>
 
+      <!-- CONFIGURACION -->
+      <div class="page" id="page-configuracion">
+        <div class="page-header">
+          <div class="page-header-copy">
+            <div class="page-title">Configuración</div>
+            <div class="page-sub">Gestión de usuarios, roles y acceso</div>
+          </div>
+        </div>
+        <div class="panel" style="max-width:900px;">
+          <div class="panel-header">
+            <div class="panel-title">Usuarios del sistema</div>
+            <span class="empty-sub">Solo visible para owner</span>
+          </div>
+          <div class="panel-body" id="config-users-list"></div>
+        </div>
+      </div>
+
     </div><!-- /main -->
   </div><!-- /app-body -->
 </div><!-- /app -->
@@ -1535,6 +1584,36 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   </div>
 </div>
 
+<!-- MODAL CONFIG USUARIO -->
+<div class="modal-overlay" id="user-config-modal" style="display:none;" onclick="closeUserConfigModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Editar usuario</div>
+    <div class="modal-sub" id="user-config-title">Actualizar rol, correo y seguridad</div>
+    <div class="form-group">
+      <label class="form-label">Rol</label>
+      <select class="form-input" id="config-user-rol">
+        <option value="owner">owner</option>
+        <option value="manager">manager</option>
+        <option value="executor">executor</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Correo</label>
+      <input type="email" class="form-input" id="config-user-email" placeholder="usuario@correo.com">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nueva contraseña</label>
+      <input type="password" class="form-input" id="config-user-password" placeholder="Solo disponible para tu propia cuenta">
+      <div class="empty-sub" id="config-user-password-hint" style="margin-top:6px;">Para otros usuarios usa "Enviar reset".</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="sendUserPasswordReset()">Enviar reset</button>
+      <button class="btn-cancel" onclick="closeUserConfigModal()">Cerrar</button>
+      <button class="btn-save" onclick="saveUserConfig()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL = 'https://xzqiyjczzempnplveeyb.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6cWl5amN6emVtcG5wbHZlZXliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQxNTMsImV4cCI6MjA5NDk1MDE1M30.78nx91F76q8-M7NnS7arg_ueooovE7o63wUWJeK6WbA';
@@ -1570,6 +1649,7 @@ let isHydratingInboxFromCloud = false;
 let taskBriefMap = {};
 let activeTaskBriefTaskId = null;
 let selectedVentureId = null;
+let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
 // Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
@@ -1692,7 +1772,7 @@ async function loadApp() {
 }
 
 async function loadUsers() {
-  const { data } = await sb.from('users').select('id,nombre').limit(30);
+  const { data } = await sb.from('users').select('id,auth_id,nombre,email,rol').order('nombre', { ascending: true }).limit(100);
   usersData = data || [];
 
   const userSelect = document.getElementById('task-asignado');
@@ -1706,6 +1786,8 @@ async function loadUsers() {
     briefSelect.innerHTML = '<option value="">— Sin responsable —</option>' +
       usersData.map(u => `<option value="${u.id}">${escapeHtml(u.nombre)}</option>`).join('');
   }
+
+  renderConfigUsers();
 }
 
 async function loadUserProfile() {
@@ -1750,7 +1832,7 @@ async function loadRoleAccess(profile) {
 function getAllowedPagesByRole() {
   if (currentUserRole === 'executor') return ['tareas', 'notas'];
   if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'notas'];
-  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo'];
+  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo', 'configuracion'];
 }
 
 function applyRoleVisibility() {
@@ -3424,6 +3506,135 @@ function renderTeam() {
     </div>`;
 }
 
+function renderConfigUsers() {
+  const container = document.getElementById('config-users-list');
+  if (!container) return;
+  if (currentUserRole !== 'owner') {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">Solo el owner puede gestionar usuarios</div></div>`;
+    return;
+  }
+  if (!usersData.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">◎</div><div class="empty-text">No hay usuarios registrados</div></div>`;
+    return;
+  }
+
+  container.innerHTML = usersData.map(u => `
+    <div class="config-user-row">
+      <div class="config-user-main">
+        <div class="config-user-name">${escapeHtml(u.nombre || 'Sin nombre')}</div>
+        <div class="config-user-email">${escapeHtml(u.email || 'Sin correo')}</div>
+        <div class="config-user-meta">
+          <span class="config-role-chip ${escapeHtml(u.rol || 'executor')}">${escapeHtml(u.rol || 'executor')}</span>
+          <span class="empty-sub">ID: ${escapeHtml(String(u.id))}</span>
+        </div>
+      </div>
+      <div class="config-user-actions">
+        <button type="button" class="task-action-btn" onclick="openUserConfigModal('${u.id}')">Editar</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openUserConfigModal(userId) {
+  if (currentUserRole !== 'owner') return;
+  const user = usersData.find(u => String(u.id) === String(userId));
+  if (!user) return;
+  activeConfigUserId = String(user.id);
+
+  const modal = document.getElementById('user-config-modal');
+  if (!modal) return;
+  const title = document.getElementById('user-config-title');
+  if (title) title.textContent = `Editar ${user.nombre || user.email || 'usuario'}`;
+  const roleEl = document.getElementById('config-user-rol');
+  if (roleEl) roleEl.value = user.rol || 'executor';
+  const emailEl = document.getElementById('config-user-email');
+  if (emailEl) emailEl.value = user.email || '';
+  const passEl = document.getElementById('config-user-password');
+  if (passEl) passEl.value = '';
+
+  const hint = document.getElementById('config-user-password-hint');
+  if (hint) {
+    hint.textContent = String(user.id) === String(currentProfileId)
+      ? 'Puedes cambiar tu contraseña aquí. Para otros usuarios usa "Enviar reset".'
+      : 'Para otros usuarios, envía reset por correo (cambio directo bloqueado por seguridad de Supabase).';
+  }
+
+  modal.style.display = 'flex';
+}
+
+function closeUserConfigModal(e) {
+  if (!e || e.target === document.getElementById('user-config-modal')) {
+    document.getElementById('user-config-modal').style.display = 'none';
+    activeConfigUserId = null;
+  }
+}
+
+async function saveUserConfig() {
+  if (currentUserRole !== 'owner') return;
+  if (!activeConfigUserId) return;
+  const user = usersData.find(u => String(u.id) === String(activeConfigUserId));
+  if (!user) return;
+
+  const rol = document.getElementById('config-user-rol')?.value || 'executor';
+  const email = String(document.getElementById('config-user-email')?.value || '').trim();
+  const newPassword = String(document.getElementById('config-user-password')?.value || '').trim();
+  if (!email) {
+    alert('El correo no puede estar vacío.');
+    return;
+  }
+
+  const { error: profileError } = await sb.from('users').update({ rol, email }).eq('id', activeConfigUserId);
+  if (profileError) {
+    alert(`No se pudo actualizar el perfil interno: ${profileError.message || ''}`);
+    return;
+  }
+
+  // Solo se puede actualizar credenciales de auth de la sesión actual con anon key.
+  const isSelf = String(user.id) === String(currentProfileId);
+  if (isSelf && email !== (currentUser?.email || '')) {
+    const { error: authEmailError } = await sb.auth.updateUser({ email });
+    if (authEmailError) {
+      alert(`Perfil actualizado, pero no se pudo actualizar Auth email: ${authEmailError.message || ''}`);
+    }
+  }
+
+  if (newPassword) {
+    if (!isSelf) {
+      alert('No puedes cambiar directamente la contraseña de otro usuario desde el cliente. Usa "Enviar reset".');
+    } else {
+      const { error: passError } = await sb.auth.updateUser({ password: newPassword });
+      if (passError) {
+        alert(`No se pudo cambiar contraseña: ${passError.message || ''}`);
+        return;
+      }
+    }
+  }
+
+  await logActivity('actualizó configuración de usuario y rol');
+  await loadUsers();
+  closeUserConfigModal();
+}
+
+async function sendUserPasswordReset() {
+  if (currentUserRole !== 'owner') return;
+  if (!activeConfigUserId) return;
+  const user = usersData.find(u => String(u.id) === String(activeConfigUserId));
+  if (!user?.email) {
+    alert('Este usuario no tiene correo registrado.');
+    return;
+  }
+
+  const { error } = await sb.auth.resetPasswordForEmail(user.email, {
+    redirectTo: `${location.origin}`
+  });
+  if (error) {
+    alert(`No se pudo enviar reset: ${error.message || ''}`);
+    return;
+  }
+  await logActivity('envió reset de contraseña a un usuario');
+  alert('Se envió el correo de reset de contraseña.');
+}
+
 // ── TASKS ──
 async function toggleTask(id, el) {
   const isDone = el.classList.contains('done');
@@ -3535,8 +3746,8 @@ function setPage(id) {
   document.getElementById('page-'+id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
-  const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
-  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo'};
+  const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4,configuracion:5};
+  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',configuracion:'Configuración'};
   if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
   const activePageLabel = document.getElementById('topbar-active-page');
   if (activePageLabel) activePageLabel.textContent = pageNames[id] || 'Panel';
@@ -3573,6 +3784,10 @@ window.toggleInboxLineSyncById = toggleInboxLineSyncById;
 window.openTaskBriefModal = openTaskBriefModal;
 window.closeTaskBriefModal = closeTaskBriefModal;
 window.saveTaskBriefModal = saveTaskBriefModal;
+window.openUserConfigModal = openUserConfigModal;
+window.closeUserConfigModal = closeUserConfigModal;
+window.saveUserConfig = saveUserConfig;
+window.sendUserPasswordReset = sendUserPasswordReset;
 
 init();
 
