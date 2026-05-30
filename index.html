@@ -3574,10 +3574,18 @@ async function saveUserConfig() {
         alert('Para crear usuario desde la app, define una contraseña temporal de al menos 6 caracteres.');
         return;
       }
-      const { userId, error: createAuthError } = await createAuthUserFromApp(email, newPassword);
+      const {
+        userId,
+        error: createAuthError,
+        recovered,
+        originalErrorMessage
+      } = await createAuthUserFromApp(email, newPassword);
       if (createAuthError || !userId) {
         alert(`No se pudo crear el acceso en Auth: ${createAuthError?.message || 'Error desconocido'}`);
         return;
+      }
+      if (recovered) {
+        console.warn('Auth user recuperado tras error en signUp:', originalErrorMessage || 'sin detalle');
       }
       auth_id = userId;
     } else {
@@ -3592,8 +3600,11 @@ async function saveUserConfig() {
     if (insertError) {
       const msg = insertError.message || '';
       const isFk = /users_auth_id_fkey|foreign key/i.test(msg);
+      const isDuplicateEmail = /duplicate key|already exists|unique/i.test(msg) && /email/i.test(msg);
       if (isFk) {
         alert('No se pudo crear el miembro porque ese Auth UUID no existe en Supabase Auth.');
+      } else if (isDuplicateEmail) {
+        alert('Ese correo ya existe en el equipo. Si corresponde, edita ese miembro en lugar de crearlo de nuevo.');
       } else {
         alert(`No se pudo crear el miembro: ${msg}`);
       }
@@ -3689,7 +3700,34 @@ async function createAuthUserFromApp(email, password) {
 
   const { data, error } = await detachedClient.auth.signUp({ email, password });
   if (error) {
-    return { userId: null, error };
+    // Supabase can return a generic database error even when the auth user is already persisted.
+    // Try to recover the auth user id by signing in with the same credentials.
+    const { data: recoveredSignIn, error: recoverError } = await detachedClient.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    const recoveredUserId = recoveredSignIn?.user?.id || null;
+    if (recoveredUserId) {
+      try {
+        await detachedClient.auth.signOut();
+      } catch (e) {
+        // no-op
+      }
+      return {
+        userId: recoveredUserId,
+        error: null,
+        recovered: true,
+        originalErrorMessage: error.message || ''
+      };
+    }
+
+    return {
+      userId: null,
+      error: {
+        message: error.message || recoverError?.message || 'Error desconocido al crear usuario en Auth.'
+      }
+    };
   }
 
   const authUserId = data?.user?.id || null;
@@ -3700,7 +3738,7 @@ async function createAuthUserFromApp(email, password) {
     };
   }
 
-  return { userId: authUserId, error: null };
+  return { userId: authUserId, error: null, recovered: false, originalErrorMessage: '' };
 }
 
 // ── TASKS ──
