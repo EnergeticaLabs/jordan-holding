@@ -709,6 +709,14 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   user-select: none;
 }
 .notes-tiny-link:hover { color: var(--gold); }
+.notes-brief-link {
+  font-size: 10px;
+  color: var(--text3);
+  cursor: pointer;
+  user-select: none;
+  margin-left: 6px;
+}
+.notes-brief-link:hover { color: var(--gold); }
 .notes-today-item {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) 56px;
@@ -743,6 +751,12 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   text-align: right;
   align-self: start;
   justify-self: end;
+}
+.notes-brief-inline {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text2);
+  line-height: 1.35;
 }
 .note-badge {
   display: inline-block; font-size: 9px; padding: 1px 5px;
@@ -1381,6 +1395,40 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   </div>
 </div>
 
+<!-- MODAL FICHA DELEGABLE -->
+<div class="modal-overlay" id="task-brief-modal" style="display:none;" onclick="closeTaskBriefModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Ficha delegable</div>
+    <div class="modal-sub" id="brief-task-title">Define entregable, criterio y responsable</div>
+    <div class="form-group">
+      <label class="form-label">Responsable</label>
+      <select class="form-input" id="brief-responsable">
+        <option value="">— Sin responsable —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Fecha compromiso</label>
+      <input type="date" class="form-input" id="brief-fecha">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Entregable esperado</label>
+      <input type="text" class="form-input" id="brief-entregable" placeholder="Ej: guion final de 2 minutos aprobado">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Criterio de terminado</label>
+      <input type="text" class="form-input" id="brief-criterio" placeholder="Ej: publicado y validado por owner">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Evidencia requerida</label>
+      <input type="text" class="form-input" id="brief-evidencia" placeholder="Ej: link, captura o documento">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeTaskBriefModal()">Cancelar</button>
+      <button class="btn-save" onclick="saveTaskBriefModal()">Guardar ficha</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL = 'https://xzqiyjczzempnplveeyb.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6cWl5amN6emVtcG5wbHZlZXliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQxNTMsImV4cCI6MjA5NDk1MDE1M30.78nx91F76q8-M7NnS7arg_ueooovE7o63wUWJeK6WbA';
@@ -1409,6 +1457,8 @@ let draggedInboxLineId = null;
 let inboxCloudAvailable = null;
 let inboxCloudSyncTimer = null;
 let isHydratingInboxFromCloud = false;
+let taskBriefMap = {};
+let activeTaskBriefTaskId = null;
 let selectedVentureId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -1510,6 +1560,7 @@ document.addEventListener('click', e => {
 // ── LOAD APP ──
 async function loadApp() {
   document.getElementById('app').classList.add('visible');
+  loadTaskBriefs();
 
   // Render instantaneo de Notas desde cache/local mientras llegan datos remotos.
   hydrateNotesTodayFromCache();
@@ -1530,6 +1581,12 @@ async function loadUsers() {
   const userSelect = document.getElementById('task-asignado');
   if (userSelect) {
     userSelect.innerHTML = '<option value="">— Sin responsable —</option>' +
+      usersData.map(u => `<option value="${u.id}">${escapeHtml(u.nombre)}</option>`).join('');
+  }
+
+  const briefSelect = document.getElementById('brief-responsable');
+  if (briefSelect) {
+    briefSelect.innerHTML = '<option value="">— Sin responsable —</option>' +
       usersData.map(u => `<option value="${u.id}">${escapeHtml(u.nombre)}</option>`).join('');
   }
 }
@@ -1861,6 +1918,23 @@ function getNotesLinkMapKey() {
 
 function getNotesTodayCacheKey() {
   return `vfh-notes-today-${currentUser?.id || 'anon'}`;
+}
+
+function getTaskBriefsKey() {
+  return `vfh-task-briefs-${currentUser?.id || 'anon'}`;
+}
+
+function loadTaskBriefs() {
+  const raw = localStorage.getItem(getTaskBriefsKey()) || '{}';
+  try {
+    taskBriefMap = JSON.parse(raw) || {};
+  } catch (e) {
+    taskBriefMap = {};
+  }
+}
+
+function saveTaskBriefs() {
+  localStorage.setItem(getTaskBriefsKey(), JSON.stringify(taskBriefMap));
 }
 
 function hydrateNotesTodayFromCache() {
@@ -2755,6 +2829,31 @@ function parseTaskMeta(title) {
   return { cleanTitle: clean || raw, assignees, entities };
 }
 
+function getTaskBrief(taskId) {
+  return taskBriefMap[String(taskId)] || null;
+}
+
+function renderTaskBriefInline(taskId) {
+  const brief = getTaskBrief(taskId);
+  if (!brief) return '';
+  const parts = [];
+  if (brief.deliverable) parts.push(`Entregable: ${brief.deliverable}`);
+  if (brief.criteria) parts.push(`Criterio: ${brief.criteria}`);
+  if (brief.evidence) parts.push(`Evidencia: ${brief.evidence}`);
+  if (brief.commitDate) parts.push(`Compromiso: ${brief.commitDate}`);
+  if (!parts.length) return '';
+  return `<div class="notes-brief-inline">${escapeHtml(parts.join(' · '))}</div>`;
+}
+
+function ensureAssigneeTag(title, userId) {
+  if (!userId) return title;
+  const user = usersData.find(u => String(u.id) === String(userId));
+  if (!user) return title;
+  const tag = `@${normalizeText(user.nombre).replace(/\s+/g, '')}`;
+  if (new RegExp(`(^|\\s)${tag}(\\s|$)`, 'i').test(title)) return title;
+  return `${title} ${tag}`.trim();
+}
+
 function purgeCompletedInboxLines() {
   const completedIds = new Set(notesTodayData.filter(t => t.estado === 'completado').map(t => t.id));
   if (!completedIds.size) return;
@@ -2822,12 +2921,86 @@ function renderNotesToday() {
           <span class="notes-title-inline ${t.estado === 'completado' ? 'done-text' : ''}">${escapeHtml(meta.cleanTitle)}</span>
           ${meta.assignees.map(a => `<span class="note-badge note-badge-assignee">@${escapeHtml(a)}</span>`).join('')}
           ${meta.entities.map(e => `<span class="note-badge note-badge-entity">#${escapeHtml(e)}</span>`).join('')}
+          <span class="notes-brief-link" onclick="openTaskBriefModal('${t.id}')">delegar</span>
+          ${renderTaskBriefInline(t.id)}
         </div>
         <div class="notes-priority-col">${escapeHtml(t.prioridad || 'media')}</div>
       </div>
     </div>
   `;
   }).join('');
+}
+
+function openTaskBriefModal(taskId) {
+  activeTaskBriefTaskId = String(taskId || '');
+  const brief = getTaskBrief(activeTaskBriefTaskId) || {};
+  const modal = document.getElementById('task-brief-modal');
+  if (!modal) return;
+
+  const titleEl = document.getElementById('brief-task-title');
+  const task = notesTodayData.find(t => String(t.id) === activeTaskBriefTaskId);
+  if (titleEl) titleEl.textContent = cleanTaskTitle(task?.titulo || 'Tarea');
+
+  const sel = document.getElementById('brief-responsable');
+  if (sel) sel.value = brief.assigneeId || '';
+  const dateEl = document.getElementById('brief-fecha');
+  if (dateEl) dateEl.value = brief.commitDate || '';
+  const delEl = document.getElementById('brief-entregable');
+  if (delEl) delEl.value = brief.deliverable || '';
+  const criEl = document.getElementById('brief-criterio');
+  if (criEl) criEl.value = brief.criteria || '';
+  const eviEl = document.getElementById('brief-evidencia');
+  if (eviEl) eviEl.value = brief.evidence || '';
+
+  modal.style.display = 'flex';
+}
+
+function closeTaskBriefModal(e) {
+  if (!e || e.target === document.getElementById('task-brief-modal')) {
+    document.getElementById('task-brief-modal').style.display = 'none';
+    activeTaskBriefTaskId = null;
+  }
+}
+
+async function saveTaskBriefModal() {
+  if (!activeTaskBriefTaskId) return;
+  const task = notesTodayData.find(t => String(t.id) === String(activeTaskBriefTaskId));
+  if (!task) { closeTaskBriefModal(); return; }
+
+  const assigneeId = document.getElementById('brief-responsable')?.value || '';
+  const commitDate = document.getElementById('brief-fecha')?.value || '';
+  const deliverable = String(document.getElementById('brief-entregable')?.value || '').trim();
+  const criteria = String(document.getElementById('brief-criterio')?.value || '').trim();
+  const evidence = String(document.getElementById('brief-evidencia')?.value || '').trim();
+
+  const brief = { assigneeId, commitDate, deliverable, criteria, evidence };
+  const hasValues = Object.values(brief).some(v => String(v || '').trim());
+  if (hasValues) {
+    taskBriefMap[String(activeTaskBriefTaskId)] = brief;
+  } else {
+    delete taskBriefMap[String(activeTaskBriefTaskId)];
+  }
+  saveTaskBriefs();
+
+  const payload = {};
+  if (commitDate) payload.fecha_limite = commitDate;
+  const nextTitle = ensureAssigneeTag(task.titulo, assigneeId);
+  if (nextTitle !== task.titulo) payload.titulo = nextTitle;
+
+  if (Object.keys(payload).length) {
+    const { error } = await sb.from('tasks').update(payload).eq('id', activeTaskBriefTaskId);
+    if (error) {
+      alert(`No se pudo guardar la ficha delegable. ${error.message || ''}`);
+      return;
+    }
+  }
+
+  await logActivity('actualizo ficha delegable de una tarea');
+  closeTaskBriefModal();
+  await loadTasks();
+  await loadNotesToday();
+  renderTasksPanel();
+  renderTareasPage();
 }
 
 function escapeHtml(value) {
@@ -3000,6 +3173,9 @@ window.openNotesParserPreview = openNotesParserPreview;
 window.closeNotesParserPreview = closeNotesParserPreview;
 window.clearCompletedNotesToday = clearCompletedNotesToday;
 window.toggleInboxLineSyncById = toggleInboxLineSyncById;
+window.openTaskBriefModal = openTaskBriefModal;
+window.closeTaskBriefModal = closeTaskBriefModal;
+window.saveTaskBriefModal = saveTaskBriefModal;
 
 init();
 
