@@ -495,6 +495,67 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .task-title { font-size: 12px; color: var(--text); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-title.done-text { text-decoration: line-through; color: var(--text3); }
 .task-meta { font-size: 10px; color: var(--text3); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.task-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.task-action-btn {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.task-action-btn:hover { border-color: var(--border2); color: var(--text); }
+.task-state-chip {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface3);
+  color: var(--text2);
+}
+.task-state-chip.state-en_curso { background: var(--blue-bg); color: var(--blue); }
+.task-state-chip.state-bloqueado { background: var(--red-bg); color: var(--red); }
+.task-state-chip.state-entregado { background: var(--green-bg); color: var(--green); }
+.task-state-chip.state-pendiente { background: var(--amber-bg); color: var(--amber); }
+.executor-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.executor-col {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.executor-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.executor-col-body {
+  min-height: 180px;
+  max-height: 62vh;
+  overflow: auto;
+}
+.executor-card {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.executor-card:last-child { border-bottom: none; }
 .task-venture-tag {
   font-size: 10px; padding: 1px 6px; border-radius: 4px;
   background: var(--surface3); color: var(--text2);
@@ -1029,6 +1090,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .notes-grid { grid-template-columns: 1fr; }
   .ventures-detail-grid { grid-template-columns: 1fr; }
   .venture-kanban { grid-template-columns: 1fr; }
+  .executor-board { grid-template-columns: 1fr; }
   .venture-header-side { margin-left: 0; justify-content: flex-start; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
@@ -1984,11 +2046,19 @@ async function moveTaskInVentureKanban(taskId, nextState) {
 
 function renderTareasPage() {
   const el = document.getElementById('tareas-list');
-  document.getElementById('tareas-sub').textContent = `${tasksData.length} tareas pendientes`;
+  document.getElementById('tareas-sub').textContent = currentUserRole === 'executor'
+    ? `${tasksData.length} tareas activas`
+    : `${tasksData.length} tareas pendientes`;
   if (!tasksData.length) {
     el.innerHTML=`<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div><div class="empty-sub">Crea una nueva tarea para comenzar</div></div>`;
     return;
   }
+
+  if (currentUserRole === 'executor') {
+    renderExecutorBoard(el);
+    return;
+  }
+
   el.innerHTML=`<div class="panel"><div class="panel-body">${tasksData.map(t=>`
     <div class="task-item">
       <div class="task-check" onclick="toggleTask('${t.id}',this)"></div>
@@ -1997,11 +2067,123 @@ function renderTareasPage() {
         <div class="task-meta">
           <div class="priority-dot p-${t.prioridad}"></div>
           <span>${t.prioridad.charAt(0).toUpperCase()+t.prioridad.slice(1)}</span>
+          <span class="task-state-chip state-${escapeHtml(t.estado || 'pendiente')}">${escapeHtml(getTaskStateLabel(t.estado || 'pendiente'))}</span>
           ${t.ventures?`<span class="task-venture-tag">${t.ventures.emoji} ${t.ventures.nombre}</span>`:'<span class="task-venture-tag">Sin venture</span>'}
           ${t.fecha_limite?`<span>📅 ${formatDate(t.fecha_limite)}</span>`:''}
         </div>
+        ${renderSupervisorTaskActions(t)}
       </div>
     </div>`).join('')}</div></div>`;
+}
+
+function getTaskStateLabel(state) {
+  const labels = {
+    pendiente: 'Por hacer',
+    en_curso: 'En curso',
+    bloqueado: 'Bloqueado',
+    entregado: 'Entregado',
+    completado: 'Completado',
+    cancelado: 'Cancelado'
+  };
+  return labels[state] || state;
+}
+
+function renderSupervisorTaskActions(task) {
+  if (!['owner', 'manager'].includes(currentUserRole)) return '';
+  if (task.estado !== 'entregado') return '';
+  return `
+    <div class="task-actions">
+      <button type="button" class="task-action-btn" onclick="approveDeliveredTask('${task.id}')">Aprobar</button>
+      <button type="button" class="task-action-btn" onclick="returnDeliveredTask('${task.id}')">Devolver</button>
+    </div>
+  `;
+}
+
+function renderExecutorCard(task) {
+  const meta = parseTaskMeta(task.titulo || '');
+  return `
+    <div class="executor-card">
+      <div class="task-title">${escapeHtml(meta.cleanTitle || cleanTaskTitle(task.titulo))}</div>
+      <div class="task-meta">
+        <span class="task-state-chip state-${escapeHtml(task.estado || 'pendiente')}">${escapeHtml(getTaskStateLabel(task.estado || 'pendiente'))}</span>
+        <div class="priority-dot p-${task.prioridad}"></div>
+        <span>${escapeHtml((task.prioridad || 'media').toUpperCase())}</span>
+        ${task.ventures ? `<span class="task-venture-tag">${task.ventures.emoji} ${escapeHtml(task.ventures.nombre)}</span>` : ''}
+        ${task.fecha_limite ? `<span>📅 ${escapeHtml(formatDate(task.fecha_limite))}</span>` : ''}
+      </div>
+      <div class="task-actions">
+        ${task.estado !== 'en_curso' ? `<button type="button" class="task-action-btn" onclick="moveExecutorTask('${task.id}','en_curso')">Iniciar</button>` : ''}
+        ${task.estado !== 'bloqueado' ? `<button type="button" class="task-action-btn" onclick="moveExecutorTask('${task.id}','bloqueado')">Bloquear</button>` : ''}
+        ${task.estado !== 'pendiente' ? `<button type="button" class="task-action-btn" onclick="moveExecutorTask('${task.id}','pendiente')">Replanificar</button>` : ''}
+        ${task.estado !== 'entregado' ? `<button type="button" class="task-action-btn" onclick="moveExecutorTask('${task.id}','entregado')">Entregar</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderExecutorBoard(el) {
+  const backlog = tasksData.filter(t => ['pendiente', 'bloqueado'].includes(t.estado || 'pendiente'));
+  const inProgress = tasksData.filter(t => (t.estado || 'pendiente') === 'en_curso');
+  const delivered = tasksData.filter(t => (t.estado || 'pendiente') === 'entregado');
+
+  el.innerHTML = `
+    <div class="executor-board">
+      <div class="executor-col">
+        <div class="executor-col-head"><span>Por hacer</span><span>${backlog.length}</span></div>
+        <div class="executor-col-body">${backlog.length ? backlog.map(renderExecutorCard).join('') : '<div class="empty-state"><div class="empty-sub">Sin tareas</div></div>'}</div>
+      </div>
+      <div class="executor-col">
+        <div class="executor-col-head"><span>En curso</span><span>${inProgress.length}</span></div>
+        <div class="executor-col-body">${inProgress.length ? inProgress.map(renderExecutorCard).join('') : '<div class="empty-state"><div class="empty-sub">Sin tareas</div></div>'}</div>
+      </div>
+      <div class="executor-col">
+        <div class="executor-col-head"><span>Entregado</span><span>${delivered.length}</span></div>
+        <div class="executor-col-body">${delivered.length ? delivered.map(renderExecutorCard).join('') : '<div class="empty-state"><div class="empty-sub">Sin tareas</div></div>'}</div>
+      </div>
+    </div>
+  `;
+}
+
+async function updateTaskState(taskId, nextState, activityText = null) {
+  const payload = { estado: nextState };
+  if (nextState === 'completado') payload.completado_en = new Date().toISOString();
+  if (nextState !== 'completado') payload.completado_en = null;
+
+  const { error } = await sb.from('tasks').update(payload).eq('id', taskId);
+  if (error) {
+    alert('No se pudo actualizar la tarea.');
+    return;
+  }
+
+  if (activityText) await logActivity(activityText);
+  await loadTasks();
+  await loadNotesToday();
+  renderTasksPanel();
+  renderTareasPage();
+  renderVenturesDetail();
+}
+
+async function moveExecutorTask(taskId, nextState) {
+  const inProgressCount = tasksData.filter(t => (t.estado || 'pendiente') === 'en_curso').length;
+  if (nextState === 'en_curso' && inProgressCount >= 2) {
+    alert('Límite WIP: máximo 2 tareas en curso. Entrega o replanifica una primero.');
+    return;
+  }
+  const labels = {
+    pendiente: 'movió una tarea a por hacer',
+    en_curso: 'inició una tarea',
+    bloqueado: 'marcó una tarea como bloqueada',
+    entregado: 'entregó una tarea para revisión'
+  };
+  await updateTaskState(taskId, nextState, labels[nextState] || 'actualizó una tarea');
+}
+
+async function approveDeliveredTask(taskId) {
+  await updateTaskState(taskId, 'completado', 'aprobó una tarea entregada');
+}
+
+async function returnDeliveredTask(taskId) {
+  await updateTaskState(taskId, 'pendiente', 'devolvió una tarea para ajustes');
 }
 
 // ── NOTES (C + B) ──
