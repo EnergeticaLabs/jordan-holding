@@ -1576,8 +1576,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <input type="text" class="form-input" id="config-user-name" placeholder="Nombre del miembro">
     </div>
     <div class="form-group">
-      <label class="form-label">Auth UUID (opcional para nuevos)</label>
-      <input type="text" class="form-input" id="config-user-authid" placeholder="UUID de auth.users o vacío para generar">
+      <label class="form-label">Auth UUID (opcional)</label>
+      <input type="text" class="form-input" id="config-user-authid" placeholder="Si lo dejas vacío, se crea en Auth automáticamente">
     </div>
     <div class="form-group">
       <label class="form-label">Rol</label>
@@ -1592,9 +1592,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <input type="email" class="form-input" id="config-user-email" placeholder="usuario@correo.com">
     </div>
     <div class="form-group">
-      <label class="form-label">Nueva contraseña</label>
-      <input type="password" class="form-input" id="config-user-password" placeholder="Solo disponible para tu propia cuenta">
-      <div class="empty-sub" id="config-user-password-hint" style="margin-top:6px;">Para otros usuarios usa "Enviar reset".</div>
+      <label class="form-label">Contraseña</label>
+      <input type="password" class="form-input" id="config-user-password" placeholder="Temporal para nuevos miembros o cambio de tu cuenta">
+      <div class="empty-sub" id="config-user-password-hint" style="margin-top:6px;">Para otros usuarios existentes usa "Enviar reset".</div>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="sendUserPasswordReset()">Enviar reset</button>
@@ -3533,7 +3533,7 @@ function openUserConfigModal(userId = null) {
   const hint = document.getElementById('config-user-password-hint');
   if (hint) {
     hint.textContent = !user
-      ? 'Primero crea el usuario en Supabase Auth y pega aquí su UUID (auth.users.id).'
+      ? 'Puedes crear el acceso desde aquí: deja Auth UUID vacío y define una contraseña temporal.'
       : String(user.id) === String(currentProfileId)
       ? 'Puedes cambiar tu contraseña aquí. Para otros usuarios usa "Enviar reset".'
       : 'Para otros usuarios, envía reset por correo (cambio directo bloqueado por seguridad de Supabase).';
@@ -3568,24 +3568,32 @@ async function saveUserConfig() {
   }
 
   if (!user) {
-    if (!authIdInput) {
-      alert('Para crear un miembro, primero crea el usuario en Supabase Auth y pega su UUID en Auth UUID.');
-      return;
+    let auth_id = authIdInput;
+    if (!auth_id) {
+      if (!newPassword || newPassword.length < 6) {
+        alert('Para crear usuario desde la app, define una contraseña temporal de al menos 6 caracteres.');
+        return;
+      }
+      const { userId, error: createAuthError } = await createAuthUserFromApp(email, newPassword);
+      if (createAuthError || !userId) {
+        alert(`No se pudo crear el acceso en Auth: ${createAuthError?.message || 'Error desconocido'}`);
+        return;
+      }
+      auth_id = userId;
+    } else {
+      const authIdLooksValid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(auth_id);
+      if (!authIdLooksValid) {
+        alert('El Auth UUID no tiene formato válido. Debe ser el id exacto de auth.users.');
+        return;
+      }
     }
 
-    const authIdLooksValid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(authIdInput);
-    if (!authIdLooksValid) {
-      alert('El Auth UUID no tiene formato válido. Debe ser el id exacto de auth.users.');
-      return;
-    }
-
-    const auth_id = authIdInput;
     const { error: insertError } = await sb.from('users').insert({ auth_id, nombre, email, rol });
     if (insertError) {
       const msg = insertError.message || '';
       const isFk = /users_auth_id_fkey|foreign key/i.test(msg);
       if (isFk) {
-        alert('No se pudo crear el miembro porque ese Auth UUID no existe en Supabase Auth. Crea el usuario en Authentication > Users y usa ese id.');
+        alert('No se pudo crear el miembro porque ese Auth UUID no existe en Supabase Auth.');
       } else {
         alert(`No se pudo crear el miembro: ${msg}`);
       }
@@ -3667,6 +3675,32 @@ async function sendUserPasswordReset() {
   }
   await logActivity('envió reset de contraseña a un usuario');
   alert('Se envió el correo de reset de contraseña.');
+}
+
+async function createAuthUserFromApp(email, password) {
+  const detachedClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: `vfh-create-user-${Date.now()}`
+    }
+  });
+
+  const { data, error } = await detachedClient.auth.signUp({ email, password });
+  if (error) {
+    return { userId: null, error };
+  }
+
+  const authUserId = data?.user?.id || null;
+  if (!authUserId) {
+    return {
+      userId: null,
+      error: { message: 'No se obtuvo id de auth.users al crear la cuenta.' }
+    };
+  }
+
+  return { userId: authUserId, error: null };
 }
 
 // ── TASKS ──
