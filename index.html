@@ -1457,8 +1457,9 @@ async function loadApp() {
   document.getElementById('app').classList.add('visible');
   await loadUserProfile();
   await Promise.all([loadVentures(), loadTasks(), loadActivity(), loadUsers()]);
-  await loadNotesToday();
-  await bindNotesInbox();
+  hydrateNotesTodayFromCache();
+  bindNotesInbox();
+  loadNotesToday();
   renderDashboard();
   setDate();
 }
@@ -1799,6 +1800,23 @@ function getNotesLinkMapKey() {
   return `vfh-notes-linkmap-${currentUser?.id || 'anon'}`;
 }
 
+function getNotesTodayCacheKey() {
+  return `vfh-notes-today-${currentUser?.id || 'anon'}`;
+}
+
+function hydrateNotesTodayFromCache() {
+  const raw = localStorage.getItem(getNotesTodayCacheKey());
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    notesTodayData = parsed;
+    renderNotesToday();
+  } catch (e) {
+    // Ignore invalid cache and continue with remote fetch.
+  }
+}
+
 function saveNotesLinkMap() {
   localStorage.setItem(getNotesLinkMapKey(), JSON.stringify(notesTaskLinkMap));
   scheduleInboxCloudSync();
@@ -1833,18 +1851,23 @@ function saveInboxLines() {
   scheduleInboxCloudSync();
 }
 
-async function bindNotesInbox() {
+function bindNotesInbox() {
   const saved = localStorage.getItem(getNotesDraftKey()) || '';
   notesTaskLinkMap = JSON.parse(localStorage.getItem(getNotesLinkMapKey()) || '{}');
   notesInboxLines = toLineObjects(saved);
 
-  if (await canUseInboxCloud()) {
-    await loadInboxFromCloud();
-  }
-
   activeInboxLineId = notesInboxLines[0]?.id || null;
   renderInboxEditor();
   renderInboxPreview();
+
+  // Refresh from cloud in background so the UI appears instantly from local cache.
+  (async () => {
+    if (!(await canUseInboxCloud())) return;
+    await loadInboxFromCloud();
+    activeInboxLineId = notesInboxLines[0]?.id || null;
+    renderInboxEditor();
+    renderInboxPreview();
+  })();
 }
 
 async function canUseInboxCloud() {
@@ -2652,6 +2675,7 @@ async function loadNotesToday() {
     .neq('estado', 'cancelado')
     .order('id', { ascending: false });
   notesTodayData = data || [];
+  localStorage.setItem(getNotesTodayCacheKey(), JSON.stringify(notesTodayData));
   renderNotesToday();
   purgeCompletedInboxLines();
 }
