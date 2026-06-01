@@ -3613,7 +3613,7 @@ async function _saveUserConfigImpl() {
         originalErrorMessage
       } = await createAuthUserFromApp(email, newPassword);
       if (createAuthError || !userId) {
-        alert(`No se pudo crear el acceso en Auth: ${createAuthError?.message || 'Error desconocido'}`);
+        alert(createAuthError?.message || 'Error desconocido al crear el acceso en Auth.');
         return;
       }
       if (recovered) {
@@ -3747,71 +3747,39 @@ async function createAuthUserFromApp(email, password) {
     }
   );
   if (error) {
-    // Supabase can return a generic database error even when the auth user is already persisted.
-    // Try to recover the auth user id by signing in with the same credentials.
-    const { data: recoveredSignIn, error: recoverError } = await detachedClient.auth.signInWithPassword({
-      email,
-      password
-    });
+    const rawMsg = error.message || '';
+    const isRateLimit = /rate.?limit|over.?limit|too.?many/i.test(rawMsg);
 
-    const recoveredUserId = recoveredSignIn?.user?.id || null;
-    if (recoveredUserId) {
-      try {
-        await detachedClient.auth.signOut();
-      } catch (e) {
-        // no-op
-      }
+    if (isRateLimit) {
+      // Supabase hits the email rate limit when "Confirm email" is enabled.
       return {
-        userId: recoveredUserId,
-        error: null,
-        recovered: true,
-        originalErrorMessage: error.message || ''
+        userId: null,
+        error: {
+          message:
+            'Límite de correos alcanzado en Supabase.\n\n' +
+            'Para solucionarlo ve a:\nSupabase Dashboard → Authentication → Providers → Email\n' +
+            'y desactiva la opción "Confirm email".'
+        }
       };
     }
 
-    return {
-      userId: null,
-      error: {
-        message: error.message || recoverError?.message || 'Error desconocido al crear usuario en Auth.'
-      }
-    };
+    // Supabase a veces devuelve un error de DB aunque el usuario sí fue creado.
+    // Intentar recuperar el id haciendo signIn con las mismas credenciales.
+    const { data: recoveredSignIn } = await detachedClient.auth.signInWithPassword({ email, password });
+    const recoveredUserId = recoveredSignIn?.user?.id || null;
+    if (recoveredUserId) {
+      try { await detachedClient.auth.signOut(); } catch (e) {}
+      return { userId: recoveredUserId, error: null, recovered: true, originalErrorMessage: rawMsg };
+    }
+
+    return { userId: null, error: { message: rawMsg || 'Error desconocido al crear usuario en Auth.' } };
   }
 
   const authUserId = data?.user?.id || null;
   if (!authUserId) {
-    return {
-      userId: null,
-      error: { message: 'No se obtuvo id de auth.users al crear la cuenta.' }
-    };
+    return { userId: null, error: { message: 'No se obtuvo id de auth.users al crear la cuenta.' } };
   }
 
-  // Wait a moment for auth to be fully persisted, then verify login works
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  const { data: verifyLogin, error: verifyError } = await detachedClient.auth.signInWithPassword({
-    email,
-    password
-  });
-  if (verifyError || !verifyLogin?.user) {
-    // Login failed - likely due to email confirmation requirement
-    console.warn('Auth account created but login verification failed:', verifyError?.message);
-    try { await detachedClient.auth.signOut(); } catch (e) {}
-    
-    // Check if it's an "Email not confirmed" error
-    const isEmailNotConfirmed = verifyError?.message?.toLowerCase().includes('not confirmed') || 
-                                 verifyError?.status === 400;
-    
-    return {
-      userId: authUserId,
-      error: null,
-      recovered: false,
-      needsEmailVerification: isEmailNotConfirmed,
-      emailConfirmationRequired: true,
-      originalErrorMessage: verifyError?.message || ''
-    };
-  }
-
-  // Logout to avoid session persistence
-  try { await detachedClient.auth.signOut(); } catch (e) {}
   return { userId: authUserId, error: null, recovered: false, originalErrorMessage: '' };
 }
 
