@@ -1749,26 +1749,31 @@ document.addEventListener('click', e => {
 
 // ── LOAD APP ──
 async function loadApp() {
-  document.getElementById('app').classList.add('visible');
+  // 1. Cargar perfil primero: establece rol y aplica visibilidad antes de mostrar el app.
+  //    Esto evita el flash de contenido de owner en usuarios con otro rol.
   await loadUserProfile();
-  loadTaskBriefs();
 
-  // Render instantaneo de Notas desde cache/local mientras llegan datos remotos.
+  // 2. Mostrar app con el rol ya aplicado — sin flash.
+  document.getElementById('app').classList.add('visible');
+  loadTaskBriefs();
   hydrateNotesTodayFromCache();
   bindNotesInbox();
-  loadNotesToday();
   setDate();
 
-  // Carga remota en segundo plano para no bloquear primer paint en mobile.
-  await loadVentures();
-  await Promise.all([loadTasks(), loadActivity(), loadUsers()]);
-  renderDashboard();
+  // 3. Navegar inmediatamente a la página correcta con datos de caché.
+  //    El usuario ve contenido sin esperar las cargas remotas.
   const defaultPageByRole = {
     owner: 'notas',
     manager: 'dashboard',
     executor: 'tareas'
   };
   setPage(defaultPageByRole[currentUserRole] || 'notas');
+
+  // 4. Cargar datos remotos en segundo plano y re-renderizar al terminar.
+  loadNotesToday();
+  await loadVentures();
+  await Promise.all([loadTasks(), loadActivity(), loadUsers()]);
+  renderDashboard();
 }
 
 async function loadUsers() {
