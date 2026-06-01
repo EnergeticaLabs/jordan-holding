@@ -677,7 +677,17 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   background: var(--gold); color: #fff; border: none;
   padding: 8px 20px; border-radius: var(--radius-sm);
   font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;
+  display: flex; align-items: center; gap: 6px; justify-content: center;
 }
+.btn-save:disabled {
+  opacity: 0.6; cursor: not-allowed;
+}
+.btn-save.loading::after {
+  content: '';
+  width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ══ EMPTY STATE ══ */
 .empty-state { text-align: center; padding: 48px 20px; color: var(--text3); }
@@ -1599,7 +1609,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     <div class="modal-actions">
       <button class="btn-cancel" onclick="sendUserPasswordReset()">Enviar reset</button>
       <button class="btn-cancel" onclick="closeUserConfigModal()">Cerrar</button>
-      <button class="btn-save" onclick="saveUserConfig()">Guardar cambios</button>
+      <button class="btn-save" id="btn-save-user-config" onclick="saveUserConfig()">Guardar cambios</button>
     </div>
   </div>
 </div>
@@ -3551,6 +3561,23 @@ function closeUserConfigModal(e) {
 
 async function saveUserConfig() {
   if (currentUserRole !== 'owner') return;
+  const btnSave = document.getElementById('btn-save-user-config');
+  if (btnSave) {
+    btnSave.disabled = true;
+    btnSave.classList.add('loading');
+  }
+
+  try {
+    await _saveUserConfigImpl();
+  } finally {
+    if (btnSave) {
+      btnSave.disabled = false;
+      btnSave.classList.remove('loading');
+    }
+  }
+}
+
+async function _saveUserConfigImpl() {
   const user = activeConfigUserId ? usersData.find(u => String(u.id) === String(activeConfigUserId)) : null;
 
   const nombre = String(document.getElementById('config-user-name')?.value || '').trim();
@@ -3558,6 +3585,9 @@ async function saveUserConfig() {
   const rol = document.getElementById('config-user-rol')?.value || 'executor';
   const email = String(document.getElementById('config-user-email')?.value || '').trim();
   const newPassword = String(document.getElementById('config-user-password')?.value || '').trim();
+  
+    let needsEmailVerification = false;
+    let emailConfirmationRequired = false;
   if (!nombre) {
     alert('El nombre no puede estar vacío.');
     return;
@@ -3578,6 +3608,8 @@ async function saveUserConfig() {
         userId,
         error: createAuthError,
         recovered,
+        needsEmailVerification,
+        emailConfirmationRequired,
         originalErrorMessage
       } = await createAuthUserFromApp(email, newPassword);
       if (createAuthError || !userId) {
@@ -3586,6 +3618,9 @@ async function saveUserConfig() {
       }
       if (recovered) {
         console.warn('Auth user recuperado tras error en signUp:', originalErrorMessage || 'sin detalle');
+      }
+      if (needsEmailVerification || emailConfirmationRequired) {
+        console.warn('Email confirmation may be required:', originalErrorMessage);
       }
       auth_id = userId;
     } else {
@@ -3613,6 +3648,12 @@ async function saveUserConfig() {
     await logActivity('agregó un nuevo miembro del equipo');
     await loadUsers();
     closeUserConfigModal();
+    
+    // Show a helpful message about email verification
+    const verificationMsg = (needsEmailVerification || emailConfirmationRequired)
+      ? '\n\n📧 El nuevo miembro recibirá un correo de verificación. Debe confirmar su email antes de poder ingresar.\n\n⏱️ Si no ve el correo, revisa la carpeta de spam.'
+      : '\n\n✅ El nuevo miembro ya puede ingresar con las credenciales proporcionadas.';
+    alert(`✓ Miembro "${nombre}" creado exitosamente.${verificationMsg}`);
     return;
   } else {
     const updatePayload = { nombre, rol, email };
@@ -3698,7 +3739,13 @@ async function createAuthUserFromApp(email, password) {
     }
   });
 
-  const { data, error } = await detachedClient.auth.signUp({ email, password });
+  const { data, error } = await detachedClient.auth.signUp(
+    { email, password },
+    {
+      emailRedirectTo: location.origin,
+      data: { skip_email_confirmation: true }
+    }
+  );
   if (error) {
     // Supabase can return a generic database error even when the auth user is already persisted.
     // Try to recover the auth user id by signing in with the same credentials.
@@ -3738,6 +3785,33 @@ async function createAuthUserFromApp(email, password) {
     };
   }
 
+  // Wait a moment for auth to be fully persisted, then verify login works
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  const { data: verifyLogin, error: verifyError } = await detachedClient.auth.signInWithPassword({
+    email,
+    password
+  });
+  if (verifyError || !verifyLogin?.user) {
+    // Login failed - likely due to email confirmation requirement
+    console.warn('Auth account created but login verification failed:', verifyError?.message);
+    try { await detachedClient.auth.signOut(); } catch (e) {}
+    
+    // Check if it's an "Email not confirmed" error
+    const isEmailNotConfirmed = verifyError?.message?.toLowerCase().includes('not confirmed') || 
+                                 verifyError?.status === 400;
+    
+    return {
+      userId: authUserId,
+      error: null,
+      recovered: false,
+      needsEmailVerification: isEmailNotConfirmed,
+      emailConfirmationRequired: true,
+      originalErrorMessage: verifyError?.message || ''
+    };
+  }
+
+  // Logout to avoid session persistence
+  try { await detachedClient.auth.signOut(); } catch (e) {}
   return { userId: authUserId, error: null, recovered: false, originalErrorMessage: '' };
 }
 
