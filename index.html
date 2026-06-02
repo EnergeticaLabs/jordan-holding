@@ -1436,7 +1436,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
               <span class="notes-tiny-link" onclick="openNotesParserPreview()">ver parser</span>
             </div>
             <div class="notes-body">
-              <div class="notes-help">Escribe sin formulario. Patrones opcionales: <strong>[]</strong> pendiente, <strong>@persona</strong> delegado, <strong>#entidad</strong> venture, <strong>!alta</strong> prioridad.</div>
+              <div class="notes-help">Escribe sin formulario. <strong>[]</strong> o <strong>@persona</strong> → se envía solo a pendientes. <strong>#entidad</strong> vincula al venture. <strong>!alta</strong> prioridad. Fechas: <strong>hoy, mañana, lunes...</strong></div>
               <div class="notes-compose">
                 <div class="notes-entry-row">
                   <input id="notes-inbox-entry" class="notes-entry-input" type="text" placeholder="Escribe y presiona Enter para agregar al inbox" onkeydown="handleInboxQuickEntryKeydown(event)">
@@ -2622,6 +2622,12 @@ function addInboxCardFromEntry() {
   entry.value = '';
   renderInboxEditor(next.id);
   renderInboxPreview();
+
+  // Auto-enviar a pendientes si la nota lo indica ([] o @persona)
+  const parsed = parseInboxLine(text);
+  if (parsed.autoSend && !notesTaskLinkMap[next.id]) {
+    toggleInboxLineSyncById(next.id, true);
+  }
 }
 
 function onInboxCardDragStart(event, lineId) {
@@ -2853,13 +2859,13 @@ function parseInboxLine(lineText) {
   const line = (lineText || '').trim();
   const isCheckboxPending = /^\[(x|\s)?\]/i.test(line);
   const allAssignees = [...line.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
-  const allEntities = [...line.matchAll(/(^|\s)#([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
+  const allEntities  = [...line.matchAll(/(^|\s)#([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
   const assignees = allAssignees;
-  const entities = allEntities;
-  const assignee = assignees[0] || null;
-  const entity = entities[0] || null;
+  const entities  = allEntities;
+  const assignee  = assignees[0] || null;
+  const entity    = entities[0]  || null;
   const prio = (line.match(/!(urgente|alta|media|baja)/i) || [])[1]?.toLowerCase() || 'media';
-  const due = parseNaturalDueDate(line);
+  const due  = parseNaturalDueDate(line);
 
   let title = line
     .replace(/^\[(x|\s)?\]\s*/i, '')
@@ -2872,23 +2878,91 @@ function parseInboxLine(lineText) {
 
   if (!title) title = line;
 
-  const venture = entities.length === 1
-    ? venturesData.find(v => v.nombre.toLowerCase().includes(entities[0].toLowerCase()))
-    : null;
+  // --- Matching de venture: primero por tag #entity, luego por palabras clave en el título ---
+  let resolvedVenture = null;
+
+  // 1. Coincidencia por tags #entity (fuzzy: tag incluido en nombre del venture o viceversa)
+  if (entities.length > 0) {
+    for (const tag of entities) {
+      const tagNorm = normalizeText(tag).replace(/\s+/g, '');
+      const match = venturesData.find(v => {
+        const vNorm = normalizeText(v.nombre).replace(/\s+/g, '');
+        // Alias conocidos
+        const aliases = getVentureAliases(v);
+        return vNorm.includes(tagNorm) || tagNorm.includes(vNorm) ||
+               aliases.some(a => a.includes(tagNorm) || tagNorm.includes(a));
+      });
+      if (match) { resolvedVenture = match; break; }
+    }
+  }
+
+  // 2. Si no hay tag, buscar mención implícita del venture en el texto del título
+  if (!resolvedVenture) {
+    const titleNorm = normalizeText(title).replace(/\s+/g, ' ');
+    resolvedVenture = venturesData.find(v => {
+      const aliases = [normalizeText(v.nombre).replace(/\s+/g, ' '), ...getVentureAliases(v)];
+      return aliases.some(a => a.length >= 4 && titleNorm.includes(a));
+    }) || null;
+  }
+
+  // --- Matching de usuario: resuelve @tag parcial al nombre completo ---
+  const resolvedAssignees = assignees.map(tag => {
+    const tagNorm = normalizeText(tag);
+    const user = usersData.find(u => {
+      const uNorm = normalizeText(u.nombre).replace(/\s+/g, '');
+      return uNorm === tagNorm || uNorm.startsWith(tagNorm) || tagNorm.startsWith(uNorm);
+    });
+    return user ? { tag, userId: user.id, nombre: user.nombre } : { tag, userId: null, nombre: null };
+  });
+
+  // Auto-delegar: si hay exactamente un @asignado resuelto, marcar como delegado
+  const isDelegated = resolvedAssignees.some(a => a.userId !== null);
 
   return {
     title,
     priority: ['urgente', 'alta', 'media', 'baja'].includes(prio) ? prio : 'media',
     assignee,
     assignees,
+    resolvedAssignees,
+    isDelegated,
     entity,
     entities,
-    ventureId: venture?.id || null,
+    ventureId: resolvedVenture?.id || null,
+    ventureName: resolvedVenture?.nombre || null,
     dueDate: due.dueDate,
-    suggestedToday: isCheckboxPending || due.isTodayHint,
+    // Auto-enviar si tiene [], fecha explícita o @delegado
+    suggestedToday: isCheckboxPending || due.isTodayHint || isDelegated,
+    autoSend: isCheckboxPending || isDelegated,
     rawLine: lineText || '',
     fingerprint: normalizeText(line).replace(/\s+/g, ' ').trim()
   };
+}
+
+// Aliases cortos para cada venture, para matching implícito en texto libre
+function getVentureAliases(venture) {
+  if (!venture?.nombre) return [];
+  const base = normalizeText(venture.nombre).replace(/\s+/g, ' ');
+  const aliases = [base];
+  // Agregar primera palabra si tiene >3 chars
+  const words = base.split(' ').filter(w => w.length > 3);
+  if (words[0]) aliases.push(words[0]);
+  // Aliases manuales conocidos
+  const manual = {
+    'fitbase': ['fitbase', 'gym', 'gimnasio'],
+    'vatio': ['vatio', 'electrica', 'ingenieria electrica'],
+    'elite cultural': ['elite', 'elite cultural', 'podcast', 'folclorica', 'filmacion'],
+    'polimatas club': ['polimatas', 'edtech', 'comunidad'],
+    'energetica labs': ['energetica', 'blog', 'energia'],
+    'ciencia poetica': ['ciencia poetica', 'stem', 'cursos'],
+    'iwatt club': ['iwatt', 'vpp', 'blockchain'],
+    'marca personal': ['marca personal', 'redes', 'contenido'],
+    'incomparables del peru': ['incomparables', 'orquesta', 'papa'],
+    'uncp': ['uncp', 'nacional del centro'],
+    'universidad continental': ['continental', 'uc'],
+  };
+  const key = Object.keys(manual).find(k => base.includes(k) || k.includes(base));
+  if (key) aliases.push(...manual[key]);
+  return [...new Set(aliases)];
 }
 
 function normalizeText(value) {
@@ -3377,7 +3451,7 @@ function renderNotesToday() {
   const el = document.getElementById('notes-today-list');
   if (!el) return;
   if (!notesTodayData.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✎</div><div class="empty-text">Sin pendientes de hoy</div><div class="empty-sub">Escribe en Inbox y enviarlo a hoy</div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✎</div><div class="empty-text">Sin pendientes de hoy</div><div class="empty-sub">Escribe en Inbox — si incluyes @persona o [] se envía solo</div></div>`;
     return;
   }
   const orderedNotesToday = [...notesTodayData].sort((a, b) => {
@@ -3389,15 +3463,33 @@ function renderNotesToday() {
 
   el.innerHTML = orderedNotesToday.map(t => {
     const meta = parseTaskMeta(t.titulo);
+    // Resolver nombre completo del responsable desde usersData
+    const assigneeBadges = meta.assignees.map(tag => {
+      const tagNorm = normalizeText(tag);
+      const user = usersData.find(u => {
+        const uNorm = normalizeText(u.nombre).replace(/\s+/g, '');
+        return uNorm === tagNorm || uNorm.startsWith(tagNorm);
+      });
+      const label = user ? user.nombre : `@${tag}`;
+      return `<span class="note-badge note-badge-assignee" title="Delegado a ${escapeHtml(label)}">→ ${escapeHtml(label)}</span>`;
+    }).join('');
+    const entityBadges = meta.entities.map(e => {
+      const venture = venturesData.find(v => {
+        const aliases = getVentureAliases(v);
+        const eNorm = normalizeText(e).replace(/\s+/g,'');
+        return aliases.some(a => a.replace(/\s+/g,'').includes(eNorm) || eNorm.includes(a.replace(/\s+/g,'')));
+      });
+      const label = venture ? `${venture.emoji} ${venture.nombre}` : `#${e}`;
+      return `<span class="note-badge note-badge-entity">${escapeHtml(label)}</span>`;
+    }).join('');
     return `
     <div class="task-item">
       <div class="notes-today-item">
         <div class="task-check ${t.estado === 'completado' ? 'done' : ''}" onclick="toggleTask('${t.id}',this)">${t.estado === 'completado' ? '✓' : ''}</div>
         <div class="notes-today-main">
           <span class="notes-title-inline ${t.estado === 'completado' ? 'done-text' : ''}">${escapeHtml(meta.cleanTitle)}</span>
-          ${meta.assignees.map(a => `<span class="note-badge note-badge-assignee">@${escapeHtml(a)}</span>`).join('')}
-          ${meta.entities.map(e => `<span class="note-badge note-badge-entity">#${escapeHtml(e)}</span>`).join('')}
-          <span class="notes-brief-link" onclick="openTaskBriefModal('${t.id}')">delegar</span>
+          ${assigneeBadges}
+          ${entityBadges}
           ${renderTaskBriefInline(t.id)}
         </div>
         <div class="notes-priority-col">${escapeHtml(t.prioridad || 'media')}</div>
