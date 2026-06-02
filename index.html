@@ -1642,6 +1642,7 @@ let notesTaskLinkMap = {};
 let notesInboxLines = [];
 let activeInboxLineId = null;
 let notesSyncTimers = {};
+let autoSendTimers = {};
 let draggedInboxLineId = null;
 let inboxCloudAvailable = null;
 let inboxCloudSyncTimer = null;
@@ -2768,6 +2769,20 @@ function scheduleSyncLinkedInboxLine(lineId) {
   }, 450);
 }
 
+// Auto-send con debounce: si la línea cumple criterios, se vincula sola
+function scheduleAutoSendCheck(lineId) {
+  if (autoSendTimers[lineId]) clearTimeout(autoSendTimers[lineId]);
+  autoSendTimers[lineId] = setTimeout(async () => {
+    if (notesTaskLinkMap[lineId]) return; // ya está vinculada, la sincronización la maneja scheduleSyncLinkedInboxLine
+    const line = getInboxLineById(lineId);
+    if (!line || !String(line.text || '').trim()) return;
+    const parsed = parseInboxLine(line.text);
+    if (parsed.autoSend) {
+      await toggleInboxLineSyncById(lineId, true);
+    }
+  }, 700); // esperar 700ms tras dejar de escribir
+}
+
 async function syncLinkedInboxLine(lineId) {
   const link = notesTaskLinkMap[lineId];
   if (!link?.taskId) return;
@@ -2785,8 +2800,13 @@ async function syncLinkedInboxLine(lineId) {
 
   const parsed = parseInboxLine(line.text);
   if (!parsed.title) return;
+  // Construir tags desde assignees resueltos (incluye detección natural) + entities
+  const assigneeTags = (parsed.resolvedAssignees || []).map(a => {
+    const tag = a.nombre ? normalizeText(a.nombre).replace(/\s+/g, '') : a.tag;
+    return `@${tag}`;
+  });
   const tags = [
-    ...parsed.assignees.map(a => `@${a}`),
+    ...assigneeTags,
     ...parsed.entities.map(e => `#${e}`)
   ].join(' ');
 
@@ -2821,7 +2841,10 @@ function updateInboxLine(lineId, value) {
   }
   renderInboxPreview();
   updateInlineSuggestions();
+  // Si ya está vinculada, sincronizar el task existente
   scheduleSyncLinkedInboxLine(lineId);
+  // Si aún no está vinculada, verificar si debe auto-enviarse
+  if (!notesTaskLinkMap[lineId]) scheduleAutoSendCheck(lineId);
 }
 
 function insertInboxLineAfter(lineId, text = '') {
@@ -2896,7 +2919,7 @@ function parseInboxLine(lineText) {
     }
   }
 
-  // 2. Si no hay tag, buscar mención implícita del venture en el texto del título
+  // 2. Si no hay tag, buscar mención implícita del venture en el texto (con o sin #)
   if (!resolvedVenture) {
     const titleNorm = normalizeText(title).replace(/\s+/g, ' ');
     resolvedVenture = venturesData.find(v => {
@@ -2905,17 +2928,36 @@ function parseInboxLine(lineText) {
     }) || null;
   }
 
-  // --- Matching de usuario: resuelve @tag parcial al nombre completo ---
-  const resolvedAssignees = assignees.map(tag => {
+  // --- Matching de usuario: por @tag Y por nombre natural en el texto ---
+  let resolvedAssignees = assignees.map(tag => {
     const tagNorm = normalizeText(tag);
     const user = usersData.find(u => {
       const uNorm = normalizeText(u.nombre).replace(/\s+/g, '');
       return uNorm === tagNorm || uNorm.startsWith(tagNorm) || tagNorm.startsWith(uNorm);
     });
-    return user ? { tag, userId: user.id, nombre: user.nombre } : { tag, userId: null, nombre: null };
+    return user ? { tag, userId: user.id, nombre: user.nombre, source: 'tag' } : { tag, userId: null, nombre: null, source: 'tag' };
   });
 
-  // Auto-delegar: si hay exactamente un @asignado resuelto, marcar como delegado
+  // Si no hay @tags, buscar nombres de usuarios en el texto libre
+  if (!assignees.length) {
+    const titleNorm = normalizeText(line);
+    for (const user of usersData) {
+      const uNorm = normalizeText(user.nombre);
+      // Buscar cada palabra del nombre (min 4 chars) en el texto
+      const words = uNorm.split(' ').filter(w => w.length >= 4);
+      const matched = words.length > 0 && words.some(w => {
+        const re = new RegExp(`(^|\\s)${w}(\\s|$|,)`);
+        return re.test(titleNorm);
+      });
+      if (matched) {
+        const shortTag = uNorm.replace(/\s+/g, '');
+        resolvedAssignees.push({ tag: shortTag, userId: user.id, nombre: user.nombre, source: 'natural' });
+        break; // solo el primero para evitar ambigüedad
+      }
+    }
+  }
+
+  // Auto-delegar: si hay exactamente un asignado resuelto
   const isDelegated = resolvedAssignees.some(a => a.userId !== null);
 
   return {
@@ -2930,7 +2972,7 @@ function parseInboxLine(lineText) {
     ventureId: resolvedVenture?.id || null,
     ventureName: resolvedVenture?.nombre || null,
     dueDate: due.dueDate,
-    // Auto-enviar si tiene [], fecha explícita o @delegado
+    // Auto-enviar si tiene [], @persona, nombre natural, o venture detectado con fecha explícita
     suggestedToday: isCheckboxPending || due.isTodayHint || isDelegated,
     autoSend: isCheckboxPending || isDelegated,
     rawLine: lineText || '',
@@ -3127,8 +3169,13 @@ async function toggleInboxLineSync(index, checked) {
       renderInboxPreview();
       return;
     }
+    // Usar assignees resueltos (incluye detección natural sin @)
+    const assigneeTags = (line.resolvedAssignees || []).map(a => {
+      const tag = a.nombre ? normalizeText(a.nombre).replace(/\s+/g, '') : a.tag;
+      return `@${tag}`;
+    });
     const tags = [
-      ...line.assignees.map(a => `@${a}`),
+      ...assigneeTags,
       ...line.entities.map(e => `#${e}`)
     ].filter(Boolean).join(' ');
     const payload = {
