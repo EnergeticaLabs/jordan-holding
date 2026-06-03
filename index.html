@@ -710,7 +710,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-card .panel-body { padding: 0; }
 .notes-card .task-item { padding: 8px 12px; }
 #notes-today-list {
-  max-height: 228px;
+  max-height: none;
   overflow-y: auto;
 }
 .notes-body { padding: 10px 12px; }
@@ -3624,10 +3624,7 @@ function insertIntoInbox(textToInsert) {
   }
   const line = getInboxLineById(activeInboxLineId) || notesInboxLines[0] || null;
   if (line) {
-    line.text = `${line.text || ''}${textToInsert}`;
-    saveInboxLines();
-    renderInboxEditor(line.id);
-    renderInboxPreview();
+    updateInboxLine(line.id, `${line.text || ''}${textToInsert}`);
     focusInboxLine(line.id);
     return;
   }
@@ -3812,11 +3809,14 @@ function renderNotesToday() {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">✎</div><div class="empty-text">Sin pendientes de hoy</div><div class="empty-sub">Escribe en Inbox — si incluyes @persona o [] se envía solo</div></div>`;
     return;
   }
+  const PRIO_ORDER = { urgente: 0, alta: 1, media: 2, baja: 3 };
   const orderedNotesToday = [...notesTodayData].sort((a, b) => {
     const aDone = a.estado === 'completado' ? 1 : 0;
     const bDone = b.estado === 'completado' ? 1 : 0;
     if (aDone !== bDone) return aDone - bDone;
-    return 0;
+    const pa = PRIO_ORDER[a.prioridad] ?? 2;
+    const pb = PRIO_ORDER[b.prioridad] ?? 2;
+    return pa - pb;
   });
 
   el.innerHTML = orderedNotesToday.map(t => {
