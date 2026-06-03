@@ -942,9 +942,11 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 }
 .venture-kanban {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(160px, 1fr));
   gap: 10px;
   margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 .kanban-col {
   background: var(--surface2);
@@ -979,6 +981,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 }
 .kanban-card:last-child { margin-bottom: 0; }
 .kanban-locked { cursor: not-allowed; opacity: 0.75; }
+.kanban-col { border-top: 3px solid transparent; }
+.kanban-col-revision   { border-top-color: var(--amber, #f59e0b); }
+.kanban-col-aprobacion { border-top-color: var(--purple, #a78bfa); }
+.kanban-col-completado { border-top-color: var(--green, #4ade80); }
 .kanban-card-title {
   font-size: 11px;
   color: var(--text);
@@ -1517,6 +1523,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <div class="sidebar-item" data-page="equipo" onclick="setPage('equipo');closeSidebar()">
           <span class="sidebar-icon">◎</span>Equipo
         </div>
+        <div class="sidebar-item" data-page="calendario" onclick="setPage('calendario');closeSidebar()">
+          <span class="sidebar-icon">▦</span>Calendario
+        </div>
       </div>
       <div class="sidebar-section" id="sidebar-ventures-section">
         <div class="sidebar-label">Ventures</div>
@@ -1903,6 +1912,37 @@ function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebar-overlay').classList.remove('open');
 }
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('open');
+}
+
+// ── SWIPE GESTURE PARA SIDEBAR ──
+(function initSidebarSwipe() {
+  let touchStartX = 0;
+  let touchStartY = 0;
+  const THRESHOLD = 60; // px mínimos para activar
+  const EDGE = 40;      // px desde el borde izquierdo para activar el swipe de apertura
+
+  document.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dy) > Math.abs(dx) * 1.5) return; // swipe vertical, ignorar
+    const sidebar = document.getElementById('sidebar');
+    if (dx > THRESHOLD && touchStartX < EDGE) {
+      // Swipe derecha desde el borde → abrir
+      openSidebar();
+    } else if (dx < -THRESHOLD && sidebar.classList.contains('open')) {
+      // Swipe izquierda → cerrar
+      closeSidebar();
+    }
+  }, { passive: true });
+})();
 
 // ── INIT ──
 async function init() {
@@ -2462,10 +2502,13 @@ function renderVenturesDetail() {
     String(t.venture_id || '') === String(selected.id) || taskMatchesVentureTag(t, selected)
   );
   const PRIO = { urgente:0, alta:1, media:2, baja:3 };
-  const venturePendingTasks = ventureBoardTasks.filter(t => t.estado === 'pendiente').sort((a,b)=>(PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2));
-  const ventureInProgressTasks = ventureBoardTasks.filter(t => t.estado === 'en_progreso').sort((a,b)=>(PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2));
-  const ventureDoneTasks = ventureBoardTasks.filter(t => t.estado === 'completado');
-  const isOwner = currentUserRole === 'owner';
+  const venturePendingTasks    = ventureBoardTasks.filter(t => t.estado === 'pendiente').sort((a,b)=>(PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2));
+  const ventureInProgressTasks  = ventureBoardTasks.filter(t => t.estado === 'en_progreso').sort((a,b)=>(PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2));
+  const ventureRevisionTasks    = ventureBoardTasks.filter(t => t.estado === 'en_revision').sort((a,b)=>(PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2));
+  const ventureAprobacionTasks  = ventureBoardTasks.filter(t => t.estado === 'en_aprobacion').sort((a,b)=>(PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2));
+  const ventureDoneTasks        = ventureBoardTasks.filter(t => t.estado === 'completado');
+  const isOwner   = currentUserRole === 'owner';
+  const isManager = currentUserRole === 'manager' || isOwner;
 
   const getAssigneeLabel = (titulo) => {
     const tags = [...titulo.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
@@ -2479,8 +2522,19 @@ function renderVenturesDetail() {
 
   const renderKanbanCards = (tasks, colEstado) => {
     if (!tasks.length) return `<div class="kanban-empty">Sin tareas</div>`;
+    // Quién puede arrastrar desde esta columna:
+    // pendiente → solo owner
+    // en_progreso → executor, manager, owner
+    // en_revision → manager, owner
+    // en_aprobacion → solo owner
+    // completado → solo owner
+    const colDragAllowed = colEstado === 'pendiente' ? isOwner
+      : colEstado === 'en_progreso' ? true
+      : colEstado === 'en_revision' ? isManager
+      : colEstado === 'en_aprobacion' ? isOwner
+      : isOwner;
     return tasks.map(t => {
-      const canDrag = isOwner || colEstado !== 'pendiente';
+      const canDrag = colDragAllowed;
       const assignee = getAssigneeLabel(t.titulo);
       return `
       <div class="kanban-card ${canDrag ? '' : 'kanban-locked'}" ${canDrag ? `draggable="true" ondragstart="onVentureKanbanDragStart(event, '${t.id}')"` : ''}>
@@ -2494,24 +2548,48 @@ function renderVenturesDetail() {
     }).join('');
   };
 
+  // Drop permitido en columna según rol:
+  // pendiente → solo owner | en_progreso → todos | en_revision → executor+manager+owner
+  // en_aprobacion → manager+owner | completado → solo owner
+  const colDrop = (estado, fnStr) => {
+    const allowed = estado === 'pendiente' ? isOwner
+      : estado === 'en_progreso' ? true
+      : estado === 'en_revision' ? true
+      : estado === 'en_aprobacion' ? isManager
+      : isOwner;
+    return allowed ? `ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event,'${estado}')"` : '';
+  };
+
   const kanbanHtml = `
     <div class="venture-section">
       <div class="venture-kanban">
-        <div class="kanban-col" ${isOwner ? `ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event,'pendiente')"` : ''}>
+        <div class="kanban-col" ${colDrop('pendiente')}>
           <div class="kanban-col-header">
             <span>Pendiente</span><span class="kanban-count">${venturePendingTasks.length}</span>
           </div>
           <div class="kanban-col-body">${renderKanbanCards(venturePendingTasks,'pendiente')}</div>
         </div>
-        <div class="kanban-col" ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event,'en_progreso')">
+        <div class="kanban-col" ${colDrop('en_progreso')}>
           <div class="kanban-col-header">
             <span>En progreso</span><span class="kanban-count">${ventureInProgressTasks.length}</span>
           </div>
           <div class="kanban-col-body">${renderKanbanCards(ventureInProgressTasks,'en_progreso')}</div>
         </div>
-        <div class="kanban-col" ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event,'completado')">
+        <div class="kanban-col kanban-col-revision" ${colDrop('en_revision')}>
           <div class="kanban-col-header">
-            <span>Completado</span><span class="kanban-count">${ventureDoneTasks.length}</span>
+            <span>🔍 En revisión</span><span class="kanban-count">${ventureRevisionTasks.length}</span>
+          </div>
+          <div class="kanban-col-body">${renderKanbanCards(ventureRevisionTasks,'en_revision')}</div>
+        </div>
+        <div class="kanban-col kanban-col-aprobacion" ${colDrop('en_aprobacion')}>
+          <div class="kanban-col-header">
+            <span>✓? Aprobación</span><span class="kanban-count">${ventureAprobacionTasks.length}</span>
+          </div>
+          <div class="kanban-col-body">${renderKanbanCards(ventureAprobacionTasks,'en_aprobacion')}</div>
+        </div>
+        <div class="kanban-col kanban-col-completado" ${colDrop('completado')}>
+          <div class="kanban-col-header">
+            <span>✓ Completado</span><span class="kanban-count">${ventureDoneTasks.length}</span>
           </div>
           <div class="kanban-col-body">${renderKanbanCards(ventureDoneTasks,'completado')}</div>
         </div>
@@ -2587,7 +2665,7 @@ function renderVenturesDetail() {
       <div id="venture-tab-tareas" ${notasActiva ? 'style="display:none"' : ''}>
         <div class="venture-detail-body">
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text3);margin-bottom:6px;">
-            <span>Avance ${selectedProgress}% · ${venturePendingTasks.length} pendientes · ${ventureInProgressTasks.length} en progreso</span>
+            <span>Avance ${selectedProgress}% · ${venturePendingTasks.length} pendientes · ${ventureInProgressTasks.length + ventureRevisionTasks.length + ventureAprobacionTasks.length} en curso</span>
             ${isOwner ? `<div class="venture-view-toggle">
               <button class="btn-view-toggle ${ventureTasksView==='lista'?'active':''}" onclick="ventureTasksView='lista';renderVenturesDetail()">Lista</button>
               <button class="btn-view-toggle ${ventureTasksView==='kanban'?'active':''}" onclick="ventureTasksView='kanban';renderVenturesDetail()">Kanban</button>
@@ -2621,28 +2699,41 @@ async function onVentureKanbanDrop(event, nextState) {
 }
 
 async function moveTaskInVentureKanban(taskId, nextState) {
-  if (!['pendiente', 'en_progreso', 'completado'].includes(nextState)) return;
+  const VALID = ['pendiente','en_progreso','en_revision','en_aprobacion','completado'];
+  if (!VALID.includes(nextState)) return;
   const current = tasksProgressData.find(t => String(t.id) === String(taskId));
   if (!current || current.estado === nextState) return;
-  // Solo owner puede mover a/desde pendiente
+  // Restricciones por rol
   if ((nextState === 'pendiente' || current.estado === 'pendiente') && currentUserRole !== 'owner') return;
+  if (nextState === 'en_aprobacion' && !['owner','manager'].includes(currentUserRole)) return;
+  if (nextState === 'completado' && currentUserRole !== 'owner') return;
 
+  // ── OPTIMISTIC UPDATE ─────────────────────────
+  const prevEstado = current.estado;
+  current.estado = nextState;
+  if (nextState === 'completado') current.completado_en = new Date().toISOString();
+  else current.completado_en = null;
+  renderVenturesDetail();
+  renderTasksPanel();
+  renderTareasPage();
+  // ── SUPABASE (background) ─────────────────────
   const payload = nextState === 'completado'
     ? { estado: 'completado', completado_en: new Date().toISOString() }
     : { estado: nextState, completado_en: null };
-
   const { error } = await sb.from('tasks').update(payload).eq('id', taskId);
   if (error) {
-    alert('No se pudo mover la tarea en el Kanban.');
+    // Rollback
+    current.estado = prevEstado;
+    current.completado_en = prevEstado === 'completado' ? new Date().toISOString() : null;
+    renderVenturesDetail();
+    renderTasksPanel();
+    renderTareasPage();
+    alert('No se pudo mover la tarea: ' + (error.message || 'error desconocido'));
     return;
   }
-
-  await logActivity(nextState === 'completado' ? 'movió una tarea a completada (kanban)' : 'movió una tarea a pendiente (kanban)');
-  await loadTasks();
-  await loadNotesToday();
-  renderTasksPanel();
-  renderTareasPage();
-  renderVenturesDetail();
+  logActivity('movió una tarea a ' + nextState + ' (kanban)');
+  // Sync silencioso en background sin bloquear UI
+  loadTasks().then(() => { loadNotesToday(); });
 }
 
 function renderTareasPage() {
