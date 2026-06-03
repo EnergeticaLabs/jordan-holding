@@ -727,6 +727,11 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   color: var(--text2); cursor: pointer;
 }
 .quick-chip:hover { color: var(--text); border-color: var(--border2); }
+.quick-chip.chip-active {
+  background: var(--gold-bg);
+  border-color: var(--gold-dim);
+  color: var(--gold-dim);
+}
 .notes-inline-suggestions {
   display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;
 }
@@ -1578,12 +1583,12 @@ select.form-input option { background: var(--surface2); color: var(--text); }
                 <div class="notes-editor" id="notes-inbox-list"></div>
               </div>
               <div class="notes-quick">
-                <button type="button" class="quick-chip" onclick="insertIntoInbox('[] ')">Pendiente</button>
-                <button type="button" class="quick-chip" onclick="insertIntoInbox(' hoy')">Hoy</button>
-                <button type="button" class="quick-chip" onclick="insertIntoInbox(' manana')">Mañana</button>
-                <button type="button" class="quick-chip" onclick="insertIntoInbox(' !alta')">Prioridad alta</button>
-                <button type="button" class="quick-chip" onclick="insertIntoInbox(' @')">Delegar</button>
-                <button type="button" class="quick-chip" onclick="insertIntoInbox(' #')">Entidad</button>
+                <button id="chip-pendiente" type="button" class="quick-chip" onclick="toggleInboxChip('pendiente')">Pendiente</button>
+                <button id="chip-hoy" type="button" class="quick-chip" onclick="toggleInboxChip('hoy')">Hoy</button>
+                <button id="chip-manana" type="button" class="quick-chip" onclick="toggleInboxChip('manana')">Mañana</button>
+                <button id="chip-alta" type="button" class="quick-chip" onclick="toggleInboxChip('alta')">Prioridad alta</button>
+                <button id="chip-delegar" type="button" class="quick-chip" onclick="toggleInboxChip('delegar')">Delegar</button>
+                <button id="chip-entidad" type="button" class="quick-chip" onclick="toggleInboxChip('entidad')">Entidad</button>
               </div>
               <div class="notes-inline-suggestions" id="notes-inline-suggestions"></div>
               <div class="notes-actions">
@@ -2892,6 +2897,7 @@ function renderInboxEditor(preferredFocusLineId = null, preferredSelection = nul
   }).join('');
 
   container.querySelectorAll('.notes-line-input').forEach(autosizeNoteTextarea);
+  updateQuickChipStates();
   updateInlineSuggestions();
 
   const fallbackLineId = preferredFocusLineId || null;
@@ -3039,6 +3045,7 @@ function autosizeNoteTextarea(el) {
 function setActiveInboxLine(lineId) {
   activeInboxLineId = lineId;
   updateInlineSuggestions();
+  updateQuickChipStates();
 }
 
 function getInboxLineById(lineId) {
@@ -3156,6 +3163,7 @@ function updateInboxLine(lineId, value) {
   scheduleSyncLinkedInboxLine(lineId);
   // Si aún no está vinculada, verificar si debe auto-enviarse
   if (!notesTaskLinkMap[lineId]) scheduleAutoSendCheck(lineId);
+  updateQuickChipStates();
 }
 
 function insertInboxLineAfter(lineId, text = '') {
@@ -3632,6 +3640,72 @@ function insertIntoInbox(textToInsert) {
     entry.value = `${entry.value || ''}${textToInsert}`;
     entry.focus();
   }
+}
+
+function updateQuickChipStates() {
+  const line = getInboxLineById(activeInboxLineId);
+  const text = line?.text || '';
+  const hasPendiente = /\[\s*\]/.test(text);
+  const hasHoy = /(^|\s)(hoy)(\s|$)/i.test(text);
+  const hasManana = /(^|\s)(mañana|manana)(\s|$)/i.test(text);
+  const hasAlta = /(^|\s)!(urgente|alta)(\s|$)/i.test(text);
+  const hasDelegar = /(^|\s)@[a-zA-Z0-9_-]*/i.test(text);
+  const hasEntidad = /(^|\s)#[a-zA-Z0-9_-]*/i.test(text);
+  const toggle = (id, active) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('chip-active', active);
+  };
+  toggle('chip-pendiente', hasPendiente);
+  toggle('chip-hoy', hasHoy);
+  toggle('chip-manana', hasManana);
+  toggle('chip-alta', hasAlta);
+  toggle('chip-delegar', hasDelegar);
+  toggle('chip-entidad', hasEntidad);
+}
+
+function toggleInboxChip(chip) {
+  const line = getInboxLineById(activeInboxLineId);
+  if (!line && chip !== 'pendiente') {
+    // Sin línea activa: crear una nueva con el chip
+    const map = { pendiente: '[] ', hoy: ' hoy', manana: ' manana', alta: ' !alta', delegar: ' @', entidad: ' #' };
+    const entry = document.getElementById('notes-inbox-entry');
+    if (entry) { entry.value += map[chip] || ''; entry.focus(); }
+    return;
+  }
+  if (!line) {
+    const entry = document.getElementById('notes-inbox-entry');
+    if (entry) { entry.value = '[] '; entry.focus(); }
+    return;
+  }
+  let text = line.text || '';
+  switch (chip) {
+    case 'pendiente':
+      text = /\[\s*\]/.test(text) ? text.replace(/\[\s*\]\s*/g, '') : '[] ' + text;
+      break;
+    case 'hoy':
+      text = /(^|\s)(hoy)(\s|$)/i.test(text)
+        ? text.replace(/(^|\s)(hoy)(\s|$)/gi, ' ').trim()
+        : text + ' hoy';
+      break;
+    case 'manana':
+      text = /(^|\s)(mañana|manana)(\s|$)/i.test(text)
+        ? text.replace(/(^|\s)(mañana|manana)(\s|$)/gi, ' ').trim()
+        : text + ' manana';
+      break;
+    case 'alta':
+      text = /(^|\s)!(urgente|alta)(\s|$)/i.test(text)
+        ? text.replace(/(^|\s)!(urgente|alta)(\s|$)/gi, ' ').trim()
+        : text + ' !alta';
+      break;
+    case 'delegar':
+      if (!/(^|\s)@/.test(text)) text = text + ' @';
+      break;
+    case 'entidad':
+      if (!/(^|\s)#/.test(text)) text = text + ' #';
+      break;
+  }
+  updateInboxLine(line.id, text.trim());
+  focusInboxLine(line.id);
 }
 
 function updateInlineSuggestions() {
