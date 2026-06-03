@@ -3181,7 +3181,7 @@ function insertInboxLineAfter(lineId, text = '') {
 function focusInboxLine(lineId) {
   const input = document.querySelector(`.notes-line-input[data-line-id="${lineId}"]`);
   if (!input) return;
-  input.focus();
+  input.focus({ preventScroll: true });
   input.setSelectionRange(input.value.length, input.value.length);
   setActiveInboxLine(lineId);
 }
@@ -3682,8 +3682,10 @@ function toggleInboxChip(chip) {
       case 'entidad':   if (!/(^|\s)#/.test(text)) text = text + ' #'; break;
     }
     entry.value = text.trim();
-    entry.focus();
+    entry.focus({ preventScroll: true });
     updateQuickChipStates();
+    if (['delegar', 'entidad'].includes(chip)) updateInlineSuggestions();
+    else { const c = document.getElementById('notes-inline-suggestions'); if (c) c.innerHTML = ''; }
     return;
   }
   const line = getInboxLineById(activeInboxLineId);
@@ -3706,12 +3708,19 @@ function toggleInboxChip(chip) {
   if (ta) {
     ta.value = newText;
     autosizeNoteTextarea(ta);
-    ta.focus();
+    ta.focus({ preventScroll: true });
     ta.setSelectionRange(newText.length, newText.length);
   }
   renderInboxPreview();
   updateQuickChipStates();
-  updateInlineSuggestions();
+  // Solo mostrar subchips si el texto termina en @ o #
+  const showSuggestions = ['delegar', 'entidad'].includes(chip);
+  if (showSuggestions) {
+    updateInlineSuggestions();
+  } else {
+    const c = document.getElementById('notes-inline-suggestions');
+    if (c) c.innerHTML = '';
+  }
   scheduleSyncLinkedInboxLine(line.id);
   if (!notesTaskLinkMap[line.id]) scheduleAutoSendCheck(line.id);
 }
