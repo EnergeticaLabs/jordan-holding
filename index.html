@@ -3669,109 +3669,122 @@ function updateQuickChipStates() {
 }
 
 function toggleInboxChip(chip) {
+  let text, updateFn;
+
   if (lastInboxFocusSource === 'entry') {
     const entry = document.getElementById('notes-inbox-entry');
     if (!entry) return;
-    let text = entry.value || '';
-    switch (chip) {
-      case 'pendiente': text = /\[\s*\]/.test(text) ? text.replace(/\[\s*\]\s*/g, '').trim() : '[] ' + text; break;
-      case 'hoy':       text = /(^|\s)hoy(\s|$)/i.test(text)    ? text.replace(/(^|\s)hoy(\s|$)/gi, ' ').trim()               : text + ' hoy'; break;
-      case 'manana':    text = /(^|\s)(mañana|manana)(\s|$)/i.test(text) ? text.replace(/(^|\s)(mañana|manana)(\s|$)/gi, ' ').trim() : text + ' manana'; break;
-      case 'alta':      text = /(^|\s)!(urgente|alta)(\s|$)/i.test(text) ? text.replace(/(^|\s)!(urgente|alta)(\s|$)/gi, ' ').trim() : text + ' !alta'; break;
-      case 'delegar':   if (!/(^|\s)@/.test(text)) text = text + ' @'; break;
-      case 'entidad':   if (!/(^|\s)#/.test(text)) text = text + ' #'; break;
-    }
-    entry.value = text.trim();
-    entry.focus({ preventScroll: true });
+    text = entry.value || '';
+    text = applyChipToText(chip, text);
+    entry.value = text;
+    // Devolver foco sin scroll ni efectos
+    requestAnimationFrame(() => { entry.focus({ preventScroll: true }); });
     updateQuickChipStates();
-    if (['delegar', 'entidad'].includes(chip)) updateInlineSuggestions();
-    else { const c = document.getElementById('notes-inline-suggestions'); if (c) c.innerHTML = ''; }
+    if (['delegar', 'entidad'].includes(chip)) showSuggestionsForText(text);
+    else clearInlineSuggestions();
     return;
   }
+
   const line = getInboxLineById(activeInboxLineId);
   if (!line) return;
-  let text = line.text || '';
-  switch (chip) {
-    case 'pendiente': text = /\[\s*\]/.test(text) ? text.replace(/\[\s*\]\s*/g, '').trim() : '[] ' + text; break;
-    case 'hoy':       text = /(^|\s)hoy(\s|$)/i.test(text)    ? text.replace(/(^|\s)hoy(\s|$)/gi, ' ').trim()               : text + ' hoy'; break;
-    case 'manana':    text = /(^|\s)(mañana|manana)(\s|$)/i.test(text) ? text.replace(/(^|\s)(mañana|manana)(\s|$)/gi, ' ').trim() : text + ' manana'; break;
-    case 'alta':      text = /(^|\s)!(urgente|alta)(\s|$)/i.test(text) ? text.replace(/(^|\s)!(urgente|alta)(\s|$)/gi, ' ').trim() : text + ' !alta'; break;
-    case 'delegar':   if (!/(^|\s)@/.test(text)) text = text + ' @'; break;
-    case 'entidad':   if (!/(^|\s)#/.test(text)) text = text + ' #'; break;
-  }
-  const newText = text.trim();
-  // Actualizar modelo
-  line.text = newText;
+  text = applyChipToText(chip, line.text || '');
+  line.text = text;
   saveInboxLines();
-  // Actualizar DOM directamente sin re-renderizar toda la lista
   const ta = document.querySelector(`.notes-line-input[data-line-id="${line.id}"]`);
   if (ta) {
-    ta.value = newText;
+    ta.value = text;
     autosizeNoteTextarea(ta);
-    ta.focus({ preventScroll: true });
-    ta.setSelectionRange(newText.length, newText.length);
+    // Restaurar cursor al final sin scroll ni re-focus
+    requestAnimationFrame(() => {
+      ta.setSelectionRange(text.length, text.length);
+    });
   }
   renderInboxPreview();
   updateQuickChipStates();
-  // Solo mostrar subchips si el texto termina en @ o #
-  const showSuggestions = ['delegar', 'entidad'].includes(chip);
-  if (showSuggestions) {
-    updateInlineSuggestions();
-  } else {
-    const c = document.getElementById('notes-inline-suggestions');
-    if (c) c.innerHTML = '';
-  }
+  if (['delegar', 'entidad'].includes(chip)) showSuggestionsForText(text);
+  else clearInlineSuggestions();
   scheduleSyncLinkedInboxLine(line.id);
   if (!notesTaskLinkMap[line.id]) scheduleAutoSendCheck(line.id);
 }
 
-function updateInlineSuggestions() {
-  const container = document.getElementById('notes-inline-suggestions');
-  const line = getInboxLineById(activeInboxLineId);
-  if (!container || !line) return;
-
-  const raw = line.text || '';
-  const match = raw.match(/(^|\s)([@#])([^\s@#]*)$/);
-  if (!match) {
-    container.innerHTML = '';
-    return;
+function applyChipToText(chip, text) {
+  switch (chip) {
+    case 'pendiente': return /\[\s*\]/.test(text) ? text.replace(/\[\s*\]\s*/g, '').trim() : '[] ' + text.trim();
+    case 'hoy':       return /(^|\s)hoy(\s|$)/i.test(text)    ? text.replace(/(^|\s)hoy(\s|$)/gi, ' ').trim()               : (text.trim() + ' hoy');
+    case 'manana':    return /(^|\s)(mañana|manana)(\s|$)/i.test(text) ? text.replace(/(^|\s)(mañana|manana)(\s|$)/gi, ' ').trim() : (text.trim() + ' manana');
+    case 'alta':      return /(^|\s)!(urgente|alta)(\s|$)/i.test(text) ? text.replace(/(^|\s)!(urgente|alta)(\s|$)/gi, ' ').trim() : (text.trim() + ' !alta');
+    case 'delegar':   return /(^|\s)@/.test(text) ? text : (text.trim() + ' @');
+    case 'entidad':   return /(^|\s)#/.test(text) ? text : (text.trim() + ' #');
+    default: return text;
   }
+}
 
+function clearInlineSuggestions() {
+  const c = document.getElementById('notes-inline-suggestions');
+  if (c) c.innerHTML = '';
+}
+
+function showSuggestionsForText(text) {
+  const container = document.getElementById('notes-inline-suggestions');
+  if (!container) return;
+  const match = text.match(/(^|\s)([@#])([^\s@#]*)$/);
+  if (!match) { container.innerHTML = ''; return; }
   const type = match[2];
-  const term = normalizeText(match[3]);
+  const term = normalizeText(match[3] || '');
   let suggestions = [];
-
   if (type === '@') {
     suggestions = usersData
       .map(u => ({ label: u.nombre, value: normalizeText(u.nombre).replace(/\s+/g, '') }))
       .filter(u => !term || u.value.includes(term))
       .slice(0, 6)
-      .map(u => ({ display: `@${u.value}`, insert: `@${u.value}` }));
+      .map(u => ({ display: `@${u.label}`, insert: `@${u.value}` }));
   } else {
     suggestions = venturesData
       .map(v => ({ label: v.nombre, value: normalizeText(v.nombre).replace(/\s+/g, '') }))
       .filter(v => !term || v.value.includes(term))
       .slice(0, 6)
-      .map(v => ({ display: `#${v.value}`, insert: `#${v.value}` }));
+      .map(v => ({ display: `${v.label}`, insert: `#${v.value}` }));
   }
+  if (!suggestions.length) { container.innerHTML = ''; return; }
+  container.innerHTML = suggestions.map(s =>
+    `<button type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick='applyInlineSuggestion(${JSON.stringify(s.insert)})'>${escapeHtml(s.display)}</button>`
+  ).join('');
+}
 
-  if (!suggestions.length) {
-    container.innerHTML = '';
-    return;
+function updateInlineSuggestions() {
+  let text = '';
+  if (lastInboxFocusSource === 'entry') {
+    text = document.getElementById('notes-inbox-entry')?.value || '';
+  } else {
+    text = getInboxLineById(activeInboxLineId)?.text || '';
   }
-
-  container.innerHTML = suggestions.map(s => `<button type="button" class="quick-chip" onclick='applyInlineSuggestion(${JSON.stringify(s.insert)})'>${escapeHtml(s.display)}</button>`).join('');
+  showSuggestionsForText(text);
 }
 
 function applyInlineSuggestion(insertValue) {
+  if (lastInboxFocusSource === 'entry') {
+    const entry = document.getElementById('notes-inbox-entry');
+    if (!entry) return;
+    entry.value = entry.value.replace(/(^|\s)([@#])([^\s@#]*)$/, `$1${insertValue}`);
+    requestAnimationFrame(() => entry.focus({ preventScroll: true }));
+    clearInlineSuggestions();
+    updateQuickChipStates();
+    return;
+  }
   const line = getInboxLineById(activeInboxLineId);
   if (!line) return;
-  line.text = (line.text || '').replace(/(^|\s)([@#])([^\s@#]*)$/, `$1${insertValue}`);
+  const newText = (line.text || '').replace(/(^|\s)([@#])([^\s@#]*)$/, `$1${insertValue}`);
+  line.text = newText;
   saveInboxLines();
-  renderInboxEditor();
+  const ta = document.querySelector(`.notes-line-input[data-line-id="${line.id}"]`);
+  if (ta) {
+    ta.value = newText;
+    autosizeNoteTextarea(ta);
+    requestAnimationFrame(() => ta.setSelectionRange(newText.length, newText.length));
+  }
   renderInboxPreview();
-  focusInboxLine(line.id);
-  updateInlineSuggestions();
+  clearInlineSuggestions();
+  updateQuickChipStates();
 }
 
 async function loadNotesToday() {
