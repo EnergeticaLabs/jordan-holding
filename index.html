@@ -1712,6 +1712,25 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         </div>
       </div>
 
+      <!-- CALENDARIO -->
+      <div class="page" id="page-calendario">
+        <div class="page-header page-header-title-only">
+          <div class="page-header-copy">
+            <div class="page-title">Calendario</div>
+            <div class="page-sub">Próximamente &mdash; conecta tu calendario aquí</div>
+          </div>
+        </div>
+        <div class="panel" style="max-width:700px;">
+          <div class="panel-body" style="display:flex;align-items:center;justify-content:center;min-height:200px;">
+            <div class="empty-state">
+              <div class="empty-icon">▦</div>
+              <div class="empty-text">Calendario no configurado aún</div>
+              <div class="empty-sub">Esta sección se conectará a Google Calendar o similar</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /main -->
   </div><!-- /app-body -->
 </div><!-- /app -->
@@ -1921,26 +1940,40 @@ function openSidebar() {
 (function initSidebarSwipe() {
   let touchStartX = 0;
   let touchStartY = 0;
-  const THRESHOLD = 60; // px mínimos para activar
-  const EDGE = 40;      // px desde el borde izquierdo para activar el swipe de apertura
+  let isHorizontalSwipe = false;
+  const THRESHOLD = 60;
+  const EDGE = 44; // px desde borde izquierdo para abrir
 
   document.addEventListener('touchstart', e => {
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
+    isHorizontalSwipe = false;
   }, { passive: true });
 
+  document.addEventListener('touchmove', e => {
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    const sidebar = document.getElementById('sidebar');
+    // Decidir dirección solo una vez
+    if (!isHorizontalSwipe && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      // Es horizontal
+      if ((dx > 0 && touchStartX < EDGE) || (dx < 0 && sidebar.classList.contains('open'))) {
+        isHorizontalSwipe = true;
+      }
+    }
+    if (isHorizontalSwipe) e.preventDefault();
+  }, { passive: false });
+
   document.addEventListener('touchend', e => {
+    if (!isHorizontalSwipe) return;
     const dx = e.changedTouches[0].clientX - touchStartX;
-    const dy = e.changedTouches[0].clientY - touchStartY;
-    if (Math.abs(dy) > Math.abs(dx) * 1.5) return; // swipe vertical, ignorar
     const sidebar = document.getElementById('sidebar');
     if (dx > THRESHOLD && touchStartX < EDGE) {
-      // Swipe derecha desde el borde → abrir
       openSidebar();
     } else if (dx < -THRESHOLD && sidebar.classList.contains('open')) {
-      // Swipe izquierda → cerrar
       closeSidebar();
     }
+    isHorizontalSwipe = false;
   }, { passive: true });
 })();
 
@@ -2092,8 +2125,8 @@ async function loadRoleAccess(profile) {
 
 function getAllowedPagesByRole() {
   if (currentUserRole === 'executor') return ['tareas', 'notas'];
-  if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'notas'];
-  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo'];
+  if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'notas', 'calendario'];
+  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo', 'calendario'];
 }
 
 function applyRoleVisibility() {
@@ -4680,7 +4713,7 @@ function setPage(id) {
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
   const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
-  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo'};
+  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',calendario:'Calendario'};
   if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
   const activePageLabel = document.getElementById('topbar-active-page');
   if (activePageLabel) activePageLabel.textContent = pageNames[id] || 'Panel';
