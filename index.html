@@ -1080,6 +1080,60 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .venture-detail-card.is-compact .venture-detail-body {
   padding-top: 10px;
 }
+/* ══ VENTURE TABS ══ */
+.venture-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.venture-tab {
+  padding: 9px 16px;
+  font-size: 11px;
+  color: var(--text3);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 0.15s;
+}
+.venture-tab:hover { color: var(--text2); }
+.venture-tab.active {
+  color: var(--gold-dim);
+  border-bottom-color: var(--gold-dim);
+}
+.venture-notes-area {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.venture-notes-textarea {
+  width: 100%;
+  min-height: 300px;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.venture-notes-textarea::placeholder { color: var(--text3); }
+.venture-notes-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.venture-notes-hint {
+  font-size: 10px;
+  color: var(--text3);
+  flex: 1;
+}
 .metrics-mini-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1650,6 +1704,8 @@ let isHydratingInboxFromCloud = false;
 let taskBriefMap = {};
 let activeTaskBriefTaskId = null;
 let selectedVentureId = null;
+let ventureActiveTab = 'notas';
+let ventureNotesSaveTimers = {};
 let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -1904,7 +1960,7 @@ async function loadVentures() {
   venturesData = (data || []).filter(v => isVentureAllowedForCurrentRole(v.id));
   document.getElementById('sb-ventures').textContent = venturesData.length;
   document.getElementById('sidebar-ventures').innerHTML = venturesData.map(v => `
-    <div class="sidebar-item" onclick="openVentureDetails('${v.id}');closeSidebar()">
+    <div class="sidebar-item" onclick="openVentureDetails('${v.id}', true);closeSidebar()">
       <span class="sidebar-icon">${v.emoji}</span>${v.nombre}
     </div>
   `).join('');
@@ -2033,11 +2089,68 @@ function isTaskOverdue(task) {
   return String(task.fecha_limite) < getLocalISODate();
 }
 
-function openVentureDetails(ventureId) {
+function openVentureDetails(ventureId, resetTab = false) {
   if (!isVentureAllowedForCurrentRole(ventureId)) return;
   selectedVentureId = ventureId || null;
+  if (resetTab) ventureActiveTab = 'notas';
   setPage('ventures');
   renderVenturesDetail();
+}
+
+function switchVentureTab(tab) {
+  ventureActiveTab = tab;
+  const notas = document.getElementById('venture-tab-notas');
+  const tareas = document.getElementById('venture-tab-tareas');
+  const btnNotas = document.getElementById('venture-tab-btn-notas');
+  const btnTareas = document.getElementById('venture-tab-btn-tareas');
+  if (!notas || !tareas) return;
+  notas.style.display = tab === 'notas' ? '' : 'none';
+  tareas.style.display = tab === 'tareas' ? '' : 'none';
+  if (btnNotas) btnNotas.classList.toggle('active', tab === 'notas');
+  if (btnTareas) btnTareas.classList.toggle('active', tab === 'tareas');
+}
+
+function scheduleVentureNotesSave(ventureId, text) {
+  if (ventureNotesSaveTimers[ventureId]) clearTimeout(ventureNotesSaveTimers[ventureId]);
+  ventureNotesSaveTimers[ventureId] = setTimeout(() => saveVentureNotes(ventureId, text), 900);
+}
+
+async function saveVentureNotes(ventureId, text) {
+  const v = venturesData.find(v => String(v.id) === String(ventureId));
+  if (v) v.notas_libres = text;
+  const { error } = await sb.from('ventures').update({ notas_libres: text }).eq('id', ventureId);
+  if (error) console.error('Error guardando notas de venture:', error.message);
+}
+
+function sendNoteSelectionToInbox() {
+  const ta = document.getElementById('venture-notes-textarea');
+  if (!ta) return;
+  const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd).trim();
+  const text = sel || (() => {
+    const lines = ta.value.split('\n');
+    let pos = 0;
+    for (const line of lines) {
+      pos += line.length + 1;
+      if (pos > ta.selectionStart) return line.trim();
+    }
+    return '';
+  })();
+  if (!text) return;
+  const next = { id: crypto.randomUUID(), text };
+  notesInboxLines.push(next);
+  activeInboxLineId = next.id;
+  saveInboxLines();
+  renderInboxPreview();
+  const parsed = parseInboxLine(text);
+  if (parsed.autoSend && !notesTaskLinkMap[next.id]) {
+    toggleInboxLineSyncById(next.id, true);
+  }
+  const btn = document.querySelector('.btn-send-note-inbox');
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Enviado';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }
 }
 
 function taskMatchesVentureTag(task, venture) {
@@ -2132,6 +2245,9 @@ function renderVenturesDetail() {
     </div>
   `;
 
+  const notasActiva = ventureActiveTab === 'notas';
+  const notasLibres = escapeHtml(selected.notas_libres || '');
+
   document.getElementById('ventures-detail').innerHTML = `
     <div class="venture-detail-nav">
       ${venturesData.map(v => `
@@ -2162,14 +2278,31 @@ function renderVenturesDetail() {
           <button type="button" class="btn btn-secondary btn-dashboard-back" onclick="setPage('dashboard')">Volver</button>
         </div>
       </div>
-      <div class="venture-detail-body">
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:6px;">
-          <span>Avance</span><span>${selectedProgress}% · ${venturePendingTasks.length} pendientes</span>
+      <div class="venture-tabs">
+        <button id="venture-tab-btn-notas" type="button" class="venture-tab ${notasActiva ? 'active' : ''}" onclick="switchVentureTab('notas')">✎ Notas</button>
+        <button id="venture-tab-btn-tareas" type="button" class="venture-tab ${!notasActiva ? 'active' : ''}" onclick="switchVentureTab('tareas')">✓ Tareas</button>
+      </div>
+      <div id="venture-tab-notas" ${!notasActiva ? 'style="display:none"' : ''}>
+        <div class="venture-notes-area">
+          <textarea id="venture-notes-textarea" class="venture-notes-textarea"
+            placeholder="Escribe libremente sobre este venture. Selecciona texto para enviarlo al inbox."
+            oninput="scheduleVentureNotesSave('${selected.id}', this.value)">${notasLibres}</textarea>
+          <div class="venture-notes-actions">
+            <span class="venture-notes-hint">Selecciona texto (o línea actual) y envía al inbox.</span>
+            <button type="button" class="btn btn-secondary btn-send-note-inbox" onclick="sendNoteSelectionToInbox()">→ Inbox libre</button>
+          </div>
         </div>
-        <div class="progress-bar" style="height:6px;">
-          <div class="progress-fill" style="width:${selectedProgress}%"></div>
+      </div>
+      <div id="venture-tab-tareas" ${notasActiva ? 'style="display:none"' : ''}>
+        <div class="venture-detail-body">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:6px;">
+            <span>Avance</span><span>${selectedProgress}% · ${venturePendingTasks.length} pendientes</span>
+          </div>
+          <div class="progress-bar" style="height:6px;">
+            <div class="progress-fill" style="width:${selectedProgress}%"></div>
+          </div>
+          ${kanbanHtml}
         </div>
-        ${kanbanHtml}
       </div>
     </div>`;
 }
