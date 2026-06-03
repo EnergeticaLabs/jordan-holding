@@ -942,7 +942,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 }
 .venture-kanban {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-top: 12px;
 }
@@ -978,6 +978,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   cursor: grab;
 }
 .kanban-card:last-child { margin-bottom: 0; }
+.kanban-locked { cursor: not-allowed; opacity: 0.75; }
 .kanban-card-title {
   font-size: 11px;
   color: var(--text);
@@ -1139,7 +1140,80 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   color: var(--text3);
   flex: 1;
 }
-/* ══ IA SUGGESTIONS PANEL ══ */
+/* ══ VENTURE VIEW TOGGLE ══ */
+.venture-view-toggle {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.btn-view-toggle {
+  font-size: 10px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text3);
+  cursor: pointer;
+}
+.btn-view-toggle.active {
+  background: var(--gold-bg);
+  border-color: var(--gold-dim);
+  color: var(--gold-dim);
+}
+/* ══ COMPACT TASK LIST ══ */
+.compact-task-list { margin-top: 12px; }
+.compact-task-row {
+  display: grid;
+  grid-template-columns: 16px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.compact-task-row:last-child { border-bottom: none; }
+.compact-task-row.done-row { opacity: 0.5; }
+.compact-task-title {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.compact-task-row.done-row .compact-task-title { text-decoration: line-through; }
+.compact-prio {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.compact-prio-urgente,.compact-prio-alta { background:var(--red-bg,#3a1a1a); color:var(--red,#f87171); }
+.compact-prio-media { background:var(--gold-bg); color:var(--gold-dim); }
+.compact-prio-baja { background:var(--surface2); color:var(--text3); }
+.compact-assignee {
+  font-size: 9px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+/* ══ TEAM TASKS ══ */
+.team-member-tasks {
+  margin-top: 6px;
+  padding: 0 0 4px 0;
+}
+.team-task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 11px;
+  border-top: 1px solid var(--border);
+}
+.team-task-check {
+  width:14px; height:14px; flex-shrink:0; cursor:pointer;
+}
+.team-task-title { flex:1; color:var(--text); }
+.team-task-venture {
+  font-size:9px; color:var(--text3);
+}
 .ia-suggestions-panel {
   border-top: 1px solid var(--border);
   padding: 14px 16px;
@@ -1789,7 +1863,7 @@ let isHydratingInboxFromCloud = false;
 let taskBriefMap = {};
 let activeTaskBriefTaskId = null;
 let selectedVentureId = null;
-let ventureActiveTab = 'notas';
+let ventureTasksView = 'kanban'; // 'kanban' | 'lista'
 let ventureNotesSaveTimers = {};
 let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
@@ -2387,50 +2461,83 @@ function renderVenturesDetail() {
   const ventureBoardTasks = tasksProgressData.filter(t =>
     String(t.venture_id || '') === String(selected.id) || taskMatchesVentureTag(t, selected)
   );
-  const venturePendingTasks = ventureBoardTasks.filter(t => t.estado !== 'completado');
+  const PRIO = { urgente:0, alta:1, media:2, baja:3 };
+  const venturePendingTasks = ventureBoardTasks.filter(t => t.estado === 'pendiente').sort((a,b)=>(PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2));
+  const ventureInProgressTasks = ventureBoardTasks.filter(t => t.estado === 'en_progreso').sort((a,b)=>(PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2));
   const ventureDoneTasks = ventureBoardTasks.filter(t => t.estado === 'completado');
+  const isOwner = currentUserRole === 'owner';
 
-  const renderKanbanCards = (tasks) => {
+  const getAssigneeLabel = (titulo) => {
+    const tags = [...titulo.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => m[2]);
+    if (!tags.length) return '';
+    const u = usersData.find(u => {
+      const un = normalizeText(u.nombre).replace(/\s+/g,'');
+      return tags.some(t => un === normalizeText(t) || un.startsWith(normalizeText(t)));
+    });
+    return u ? u.nombre : `@${tags[0]}`;
+  };
+
+  const renderKanbanCards = (tasks, colEstado) => {
     if (!tasks.length) return `<div class="kanban-empty">Sin tareas</div>`;
-    return tasks.map(t => `
-      <div class="kanban-card" draggable="true" ondragstart="onVentureKanbanDragStart(event, '${t.id}')">
+    return tasks.map(t => {
+      const canDrag = isOwner || colEstado !== 'pendiente';
+      const assignee = getAssigneeLabel(t.titulo);
+      return `
+      <div class="kanban-card ${canDrag ? '' : 'kanban-locked'}" ${canDrag ? `draggable="true" ondragstart="onVentureKanbanDragStart(event, '${t.id}')"` : ''}>
         <div class="kanban-card-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
         <div class="kanban-card-meta">
-          <span>${escapeHtml((t.prioridad || 'media').toUpperCase())}</span>
+          <span>${escapeHtml((t.prioridad||'media').toUpperCase())}</span>
           ${t.fecha_limite ? `<span>${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
+          ${assignee ? `<span>→ ${escapeHtml(assignee)}</span>` : ''}
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   };
 
   const kanbanHtml = `
     <div class="venture-section">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <div class="panel-title">Tablero Kanban</div>
-        <div class="empty-sub">Arrastra tareas entre columnas</div>
-      </div>
       <div class="venture-kanban">
-        <div class="kanban-col" ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event, 'pendiente')">
+        <div class="kanban-col" ${isOwner ? `ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event,'pendiente')"` : ''}>
           <div class="kanban-col-header">
-            <span>Pendientes</span>
-            <span class="kanban-count">${venturePendingTasks.length}</span>
+            <span>Pendiente</span><span class="kanban-count">${venturePendingTasks.length}</span>
           </div>
-          <div class="kanban-col-body">
-            ${renderKanbanCards(venturePendingTasks)}
-          </div>
+          <div class="kanban-col-body">${renderKanbanCards(venturePendingTasks,'pendiente')}</div>
         </div>
-        <div class="kanban-col" ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event, 'completado')">
+        <div class="kanban-col" ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event,'en_progreso')">
           <div class="kanban-col-header">
-            <span>Completadas</span>
-            <span class="kanban-count">${ventureDoneTasks.length}</span>
+            <span>En progreso</span><span class="kanban-count">${ventureInProgressTasks.length}</span>
           </div>
-          <div class="kanban-col-body">
-            ${renderKanbanCards(ventureDoneTasks)}
+          <div class="kanban-col-body">${renderKanbanCards(ventureInProgressTasks,'en_progreso')}</div>
+        </div>
+        <div class="kanban-col" ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event,'completado')">
+          <div class="kanban-col-header">
+            <span>Completado</span><span class="kanban-count">${ventureDoneTasks.length}</span>
           </div>
+          <div class="kanban-col-body">${renderKanbanCards(ventureDoneTasks,'completado')}</div>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
+
+  const allSorted = [...ventureBoardTasks].sort((a,b)=>{
+    const done = (a.estado==='completado'?1:0)-(b.estado==='completado'?1:0);
+    if (done) return done;
+    return (PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2);
+  });
+  const listaHtml = `
+    <div class="venture-section">
+      <div class="compact-task-list">
+        ${!allSorted.length ? `<div class="kanban-empty">Sin tareas para este venture</div>` : allSorted.map(t => {
+          const assignee = getAssigneeLabel(t.titulo);
+          const done = t.estado === 'completado';
+          return `<div class="compact-task-row ${done?'done-row':''}">
+            <div class="task-check ${done?'done':''} " style="width:14px;height:14px;font-size:9px;" onclick="toggleTask('${t.id}',this)">${done?'✓':''}</div>
+            <div class="compact-task-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+            <div class="compact-prio compact-prio-${t.prioridad||'media'}">${(t.prioridad||'media').toUpperCase()}</div>
+            ${assignee ? `<div class="compact-assignee">${escapeHtml(assignee)}</div>` : '<div></div>'}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
 
   const notasActiva = ventureActiveTab === 'notas';
   const notasLibres = escapeHtml(selected.notas_libres || '');
@@ -2479,13 +2586,17 @@ function renderVenturesDetail() {
       </div>
       <div id="venture-tab-tareas" ${notasActiva ? 'style="display:none"' : ''}>
         <div class="venture-detail-body">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:6px;">
-            <span>Avance</span><span>${selectedProgress}% · ${venturePendingTasks.length} pendientes</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text3);margin-bottom:6px;">
+            <span>Avance ${selectedProgress}% · ${venturePendingTasks.length} pendientes · ${ventureInProgressTasks.length} en progreso</span>
+            ${isOwner ? `<div class="venture-view-toggle">
+              <button class="btn-view-toggle ${ventureTasksView==='lista'?'active':''}" onclick="ventureTasksView='lista';renderVenturesDetail()">Lista</button>
+              <button class="btn-view-toggle ${ventureTasksView==='kanban'?'active':''}" onclick="ventureTasksView='kanban';renderVenturesDetail()">Kanban</button>
+            </div>` : ''}
           </div>
           <div class="progress-bar" style="height:6px;">
             <div class="progress-fill" style="width:${selectedProgress}%"></div>
           </div>
-          ${kanbanHtml}
+          ${isOwner && ventureTasksView === 'lista' ? listaHtml : kanbanHtml}
         </div>
       </div>
     </div>`;
@@ -2510,13 +2621,15 @@ async function onVentureKanbanDrop(event, nextState) {
 }
 
 async function moveTaskInVentureKanban(taskId, nextState) {
-  if (!['pendiente', 'completado'].includes(nextState)) return;
+  if (!['pendiente', 'en_progreso', 'completado'].includes(nextState)) return;
   const current = tasksProgressData.find(t => String(t.id) === String(taskId));
   if (!current || current.estado === nextState) return;
+  // Solo owner puede mover a/desde pendiente
+  if ((nextState === 'pendiente' || current.estado === 'pendiente') && currentUserRole !== 'owner') return;
 
   const payload = nextState === 'completado'
     ? { estado: 'completado', completado_en: new Date().toISOString() }
-    : { estado: 'pendiente', completado_en: null };
+    : { estado: nextState, completado_en: null };
 
   const { error } = await sb.from('tasks').update(payload).eq('id', taskId);
   if (error) {
@@ -4060,7 +4173,28 @@ function renderTeam() {
     return;
   }
 
-  container.innerHTML = usersData.map(u => `
+  container.innerHTML = usersData.map(u => {
+    const userTasks = tasksProgressData.filter(t => {
+      if (!t.titulo) return false;
+      const tags = [...t.titulo.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => normalizeText(m[2]));
+      if (!tags.length) return false;
+      const uNorm = normalizeText(u.nombre).replace(/\s+/g,'');
+      return tags.some(tag => uNorm === tag || uNorm.startsWith(tag) || tag.startsWith(uNorm));
+    }).filter(t => t.estado !== 'cancelado').sort((a,b)=>{
+      const PRIO={urgente:0,alta:1,media:2,baja:3};
+      const done=(a.estado==='completado'?1:0)-(b.estado==='completado'?1:0);
+      return done || (PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2);
+    });
+    const taskRows = userTasks.length ? userTasks.map(t => {
+      const v = venturesData.find(v => String(v.id) === String(t.venture_id));
+      const done = t.estado === 'completado';
+      return `<div class="team-task-row">
+        <div class="task-check ${done?'done':''}" style="width:14px;height:14px;font-size:9px;" onclick="toggleTask('${t.id}',this)">${done?'✓':''}</div>
+        <div class="team-task-title" style="${done?'text-decoration:line-through;opacity:.5':''}">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        ${v ? `<div class="team-task-venture">${escapeHtml(v.emoji||'')} ${escapeHtml(v.nombre)}</div>` : ''}
+      </div>`;
+    }).join('') : `<div class="team-task-row" style="color:var(--text3);font-size:10px;">Sin tareas asignadas</div>`;
+    return `
     <div class="config-user-row">
       <div class="config-user-main">
         <div class="config-user-name">${escapeHtml(u.nombre || 'Sin nombre')}</div>
@@ -4075,7 +4209,8 @@ function renderTeam() {
         ${currentUserRole === 'owner' && String(u.id) !== String(currentProfileId) ? `<button type="button" class="task-action-btn" onclick="removeTeamUser('${u.id}')">Quitar</button>` : ''}
       </div>
     </div>
-  `).join('');
+    <div class="team-member-tasks">${taskRows}</div>`;
+  }).join('');
 }
 
 function openUserConfigModal(userId = null) {
