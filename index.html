@@ -710,7 +710,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-card .panel-body { padding: 0; }
 .notes-card .task-item { padding: 8px 12px; }
 #notes-today-list {
-  max-height: 228px;
+  max-height: 200px;
   overflow-y: auto;
 }
 .notes-body { padding: 10px 12px; }
@@ -1580,17 +1580,17 @@ select.form-input option { background: var(--surface2); color: var(--text); }
                   <input id="notes-inbox-entry" class="notes-entry-input" type="text" placeholder="Escribe y presiona Enter para agregar al inbox" onkeydown="handleInboxQuickEntryKeydown(event)">
                   <button class="btn btn-secondary" type="button" onclick="addInboxCardFromEntry()">Agregar</button>
                 </div>
+                <div class="notes-quick">
+                  <button id="chip-pendiente" type="button" class="quick-chip" onclick="toggleInboxChip('pendiente')">Pendiente</button>
+                  <button id="chip-hoy" type="button" class="quick-chip" onclick="toggleInboxChip('hoy')">Hoy</button>
+                  <button id="chip-manana" type="button" class="quick-chip" onclick="toggleInboxChip('manana')">Mañana</button>
+                  <button id="chip-alta" type="button" class="quick-chip" onclick="toggleInboxChip('alta')">Prioridad alta</button>
+                  <button id="chip-delegar" type="button" class="quick-chip" onclick="toggleInboxChip('delegar')">Delegar</button>
+                  <button id="chip-entidad" type="button" class="quick-chip" onclick="toggleInboxChip('entidad')">Entidad</button>
+                </div>
+                <div class="notes-inline-suggestions" id="notes-inline-suggestions"></div>
                 <div class="notes-editor" id="notes-inbox-list"></div>
               </div>
-              <div class="notes-quick">
-                <button id="chip-pendiente" type="button" class="quick-chip" onclick="toggleInboxChip('pendiente')">Pendiente</button>
-                <button id="chip-hoy" type="button" class="quick-chip" onclick="toggleInboxChip('hoy')">Hoy</button>
-                <button id="chip-manana" type="button" class="quick-chip" onclick="toggleInboxChip('manana')">Mañana</button>
-                <button id="chip-alta" type="button" class="quick-chip" onclick="toggleInboxChip('alta')">Prioridad alta</button>
-                <button id="chip-delegar" type="button" class="quick-chip" onclick="toggleInboxChip('delegar')">Delegar</button>
-                <button id="chip-entidad" type="button" class="quick-chip" onclick="toggleInboxChip('entidad')">Entidad</button>
-              </div>
-              <div class="notes-inline-suggestions" id="notes-inline-suggestions"></div>
               <div class="notes-actions">
                 <span class="empty-sub">Marca casillas para enviar automatico a Pendientes de hoy</span>
                 <button class="btn btn-secondary" onclick="clearNotesInbox()">Limpiar</button>
