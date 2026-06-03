@@ -761,7 +761,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-radius: 8px;
   background: var(--surface2);
   min-height: 260px;
-  max-height: 420px;
+  max-height: 260px;
   overflow: auto;
   padding: 8px;
 }
@@ -1304,10 +1304,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
   .notes-line-input { font-size: 12px; }
-  .notes-editor { min-height: 320px; }
+  .notes-editor { min-height: 260px; max-height: 260px; }
   body.inbox-focus .notes-editor {
-    min-height: 220px;
-    max-height: 280px;
+    min-height: 260px;
+    max-height: 260px;
     overflow: auto;
   }
   .login-card { padding: 32px 24px; width: 100%; max-width: 400px; }
@@ -1330,10 +1330,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .metrics-row   { flex-direction: row; }
   .page-title    { font-size: 17px; }
   .main          { padding: 12px; }
-  .notes-editor { min-height: 260px; }
+  .notes-editor { min-height: 260px; max-height: 260px; }
   body.inbox-focus .notes-editor {
-    min-height: 180px;
-    max-height: 230px;
+    min-height: 260px;
+    max-height: 260px;
     overflow: auto;
   }
 }
@@ -3711,6 +3711,7 @@ function toggleInboxChip(chip) {
   }
   renderInboxPreview();
   updateQuickChipStates();
+  updateInlineSuggestions();
   scheduleSyncLinkedInboxLine(line.id);
   if (!notesTaskLinkMap[line.id]) scheduleAutoSendCheck(line.id);
 }
