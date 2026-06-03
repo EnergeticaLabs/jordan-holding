@@ -1577,7 +1577,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
               <div class="notes-help">Escribe sin formulario. <strong>[]</strong> o <strong>@persona</strong> → se envía solo a pendientes. <strong>#entidad</strong> vincula al venture. <strong>!alta</strong> prioridad. Fechas: <strong>hoy, mañana, lunes...</strong></div>
               <div class="notes-compose">
                 <div class="notes-entry-row">
-                  <input id="notes-inbox-entry" class="notes-entry-input" type="text" placeholder="Escribe y presiona Enter para agregar al inbox" onkeydown="handleInboxQuickEntryKeydown(event)">
+                  <input id="notes-inbox-entry" class="notes-entry-input" type="text" placeholder="Escribe y presiona Enter para agregar al inbox" onkeydown="handleInboxQuickEntryKeydown(event)" onfocus="lastInboxFocusSource='entry'; updateQuickChipStates();" oninput="updateQuickChipStates();">
                   <button class="btn btn-secondary" type="button" onclick="addInboxCardFromEntry()">Agregar</button>
                 </div>
                 <div class="notes-quick">
@@ -1779,6 +1779,7 @@ let notesPreviewData = [];
 let notesTaskLinkMap = {};
 let notesInboxLines = [];
 let activeInboxLineId = null;
+let lastInboxFocusSource = 'entry'; // 'entry' | 'line'
 let notesSyncTimers = {};
 let autoSendTimers = {};
 let draggedInboxLineId = null;
@@ -2876,7 +2877,7 @@ function renderInboxEditor(preferredFocusLineId = null, preferredSelection = nul
           class="notes-line-input"
           data-line-id="${line.id}"
           placeholder="Escribe una nota..."
-          onfocus="setActiveInboxLine('${line.id}'); setInboxFocusMode(true); ensureInboxComposerVisible();"
+          onfocus="lastInboxFocusSource='line'; setActiveInboxLine('${line.id}'); setInboxFocusMode(true); ensureInboxComposerVisible();"
           oninput="updateInboxLine('${line.id}', this.value); autosizeNoteTextarea(this);"
           onblur="handleInboxLineBlur()"
           rows="1"
@@ -3643,14 +3644,18 @@ function insertIntoInbox(textToInsert) {
 }
 
 function updateQuickChipStates() {
-  const line = getInboxLineById(activeInboxLineId);
-  const text = line?.text || '';
+  let text = '';
+  if (lastInboxFocusSource === 'entry') {
+    text = document.getElementById('notes-inbox-entry')?.value || '';
+  } else {
+    text = getInboxLineById(activeInboxLineId)?.text || '';
+  }
   const hasPendiente = /\[\s*\]/.test(text);
   const hasHoy = /(^|\s)(hoy)(\s|$)/i.test(text);
   const hasManana = /(^|\s)(mañana|manana)(\s|$)/i.test(text);
   const hasAlta = /(^|\s)!(urgente|alta)(\s|$)/i.test(text);
-  const hasDelegar = /(^|\s)@[a-zA-Z0-9_-]*/i.test(text);
-  const hasEntidad = /(^|\s)#[a-zA-Z0-9_-]*/i.test(text);
+  const hasDelegar = /(^|\s)@[a-zA-Z0-9_-]+/.test(text);
+  const hasEntidad = /(^|\s)#[a-zA-Z0-9_-]+/.test(text);
   const toggle = (id, active) => {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('chip-active', active);
@@ -3664,45 +3669,33 @@ function updateQuickChipStates() {
 }
 
 function toggleInboxChip(chip) {
+  if (lastInboxFocusSource === 'entry') {
+    const entry = document.getElementById('notes-inbox-entry');
+    if (!entry) return;
+    let text = entry.value || '';
+    switch (chip) {
+      case 'pendiente': text = /\[\s*\]/.test(text) ? text.replace(/\[\s*\]\s*/g, '').trim() : '[] ' + text; break;
+      case 'hoy':       text = /(^|\s)hoy(\s|$)/i.test(text)    ? text.replace(/(^|\s)hoy(\s|$)/gi, ' ').trim()               : text + ' hoy'; break;
+      case 'manana':    text = /(^|\s)(mañana|manana)(\s|$)/i.test(text) ? text.replace(/(^|\s)(mañana|manana)(\s|$)/gi, ' ').trim() : text + ' manana'; break;
+      case 'alta':      text = /(^|\s)!(urgente|alta)(\s|$)/i.test(text) ? text.replace(/(^|\s)!(urgente|alta)(\s|$)/gi, ' ').trim() : text + ' !alta'; break;
+      case 'delegar':   if (!/(^|\s)@/.test(text)) text = text + ' @'; break;
+      case 'entidad':   if (!/(^|\s)#/.test(text)) text = text + ' #'; break;
+    }
+    entry.value = text.trim();
+    entry.focus();
+    updateQuickChipStates();
+    return;
+  }
   const line = getInboxLineById(activeInboxLineId);
-  if (!line && chip !== 'pendiente') {
-    // Sin línea activa: crear una nueva con el chip
-    const map = { pendiente: '[] ', hoy: ' hoy', manana: ' manana', alta: ' !alta', delegar: ' @', entidad: ' #' };
-    const entry = document.getElementById('notes-inbox-entry');
-    if (entry) { entry.value += map[chip] || ''; entry.focus(); }
-    return;
-  }
-  if (!line) {
-    const entry = document.getElementById('notes-inbox-entry');
-    if (entry) { entry.value = '[] '; entry.focus(); }
-    return;
-  }
+  if (!line) return;
   let text = line.text || '';
   switch (chip) {
-    case 'pendiente':
-      text = /\[\s*\]/.test(text) ? text.replace(/\[\s*\]\s*/g, '') : '[] ' + text;
-      break;
-    case 'hoy':
-      text = /(^|\s)(hoy)(\s|$)/i.test(text)
-        ? text.replace(/(^|\s)(hoy)(\s|$)/gi, ' ').trim()
-        : text + ' hoy';
-      break;
-    case 'manana':
-      text = /(^|\s)(mañana|manana)(\s|$)/i.test(text)
-        ? text.replace(/(^|\s)(mañana|manana)(\s|$)/gi, ' ').trim()
-        : text + ' manana';
-      break;
-    case 'alta':
-      text = /(^|\s)!(urgente|alta)(\s|$)/i.test(text)
-        ? text.replace(/(^|\s)!(urgente|alta)(\s|$)/gi, ' ').trim()
-        : text + ' !alta';
-      break;
-    case 'delegar':
-      if (!/(^|\s)@/.test(text)) text = text + ' @';
-      break;
-    case 'entidad':
-      if (!/(^|\s)#/.test(text)) text = text + ' #';
-      break;
+    case 'pendiente': text = /\[\s*\]/.test(text) ? text.replace(/\[\s*\]\s*/g, '').trim() : '[] ' + text; break;
+    case 'hoy':       text = /(^|\s)hoy(\s|$)/i.test(text)    ? text.replace(/(^|\s)hoy(\s|$)/gi, ' ').trim()               : text + ' hoy'; break;
+    case 'manana':    text = /(^|\s)(mañana|manana)(\s|$)/i.test(text) ? text.replace(/(^|\s)(mañana|manana)(\s|$)/gi, ' ').trim() : text + ' manana'; break;
+    case 'alta':      text = /(^|\s)!(urgente|alta)(\s|$)/i.test(text) ? text.replace(/(^|\s)!(urgente|alta)(\s|$)/gi, ' ').trim() : text + ' !alta'; break;
+    case 'delegar':   if (!/(^|\s)@/.test(text)) text = text + ' @'; break;
+    case 'entidad':   if (!/(^|\s)#/.test(text)) text = text + ' #'; break;
   }
   updateInboxLine(line.id, text.trim());
   focusInboxLine(line.id);
