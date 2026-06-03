@@ -2249,11 +2249,6 @@ function renderVenturesDetail() {
   const notasLibres = escapeHtml(selected.notas_libres || '');
 
   document.getElementById('ventures-detail').innerHTML = `
-    <div class="venture-detail-nav">
-      ${venturesData.map(v => `
-        <button type="button" class="venture-detail-chip ${String(v.id) === String(selected.id) ? 'active' : ''}" onclick="openVentureDetails('${v.id}')">${v.emoji} ${v.nombre}</button>
-      `).join('')}
-    </div>
     <div class="venture-detail-card" id="venture-detail-${selected.id}">
       <div class="venture-detail-header">
         <div class="venture-header-main">
