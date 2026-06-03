@@ -1134,6 +1134,85 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   color: var(--text3);
   flex: 1;
 }
+/* ══ IA SUGGESTIONS PANEL ══ */
+.ia-suggestions-panel {
+  border-top: 1px solid var(--border);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ia-suggestions-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text3);
+  margin-bottom: 2px;
+}
+.ia-suggestion-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.ia-suggestion-body {
+  flex: 1;
+  min-width: 0;
+}
+.ia-suggestion-titulo {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.ia-suggestion-meta {
+  font-size: 10px;
+  color: var(--text3);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ia-suggestion-razon {
+  font-size: 10px;
+  color: var(--text3);
+  font-style: italic;
+  margin-top: 3px;
+}
+.ia-suggestion-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.btn-ia-accept {
+  font-size: 10px;
+  padding: 4px 9px;
+  background: var(--gold-bg);
+  border: 1px solid var(--gold-dim);
+  color: var(--gold-dim);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn-ia-accept:hover { opacity: 0.85; }
+.btn-ia-reject {
+  font-size: 10px;
+  padding: 4px 9px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text3);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn-ia-reject:hover { color: var(--text2); }
+.ia-empty {
+  font-size: 11px;
+  color: var(--text3);
+  padding: 8px 0;
+  text-align: center;
+}
 .metrics-mini-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2153,6 +2232,108 @@ function sendNoteSelectionToInbox() {
   }
 }
 
+async function analyzeVentureNotes(ventureId) {
+  const ta = document.getElementById('venture-notes-textarea');
+  const container = document.getElementById('ia-suggestions-container');
+  const btn = document.getElementById('btn-ia-analyze');
+  if (!ta || !container) return;
+  const notes = ta.value.trim();
+  if (!notes) {
+    container.innerHTML = `<div class="ia-suggestions-panel"><div class="ia-empty">Escribe algunas notas primero.</div></div>`;
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analizando...'; }
+  container.innerHTML = '';
+  try {
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        notes,
+        ventures: venturesData.map(v => ({ id: v.id, nombre: v.nombre })),
+        users: usersData.map(u => ({ id: u.id, nombre: u.nombre })),
+        date: new Date().toISOString().split('T')[0],
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const sugs = data.sugerencias || [];
+    if (!sugs.length) {
+      container.innerHTML = `<div class="ia-suggestions-panel"><div class="ia-empty">No se detectaron tareas claras en estas notas.</div></div>`;
+      return;
+    }
+    window._iaSuggestions = sugs;
+    container.innerHTML = `
+      <div class="ia-suggestions-panel">
+        <div class="ia-suggestions-title">✨ Sugerencias de la IA — confirma las que quieras crear</div>
+        ${sugs.map((s, i) => {
+          const ventureNombre = s.venture_id ? (venturesData.find(v => String(v.id) === String(s.venture_id))?.nombre || '') : '';
+          const assigneeNombre = s.assignee_id ? (usersData.find(u => String(u.id) === String(s.assignee_id))?.nombre || '') : '';
+          return `
+          <div class="ia-suggestion-card" id="ia-sug-${i}">
+            <div class="ia-suggestion-body">
+              <div class="ia-suggestion-titulo">${escapeHtml(s.titulo)}</div>
+              <div class="ia-suggestion-meta">
+                ${ventureNombre ? `<span>${escapeHtml(ventureNombre)}</span>` : ''}
+                ${assigneeNombre ? `<span>→ ${escapeHtml(assigneeNombre)}</span>` : ''}
+                ${s.fecha_limite ? `<span>${escapeHtml(s.fecha_limite)}</span>` : ''}
+              </div>
+              ${s.razon ? `<div class="ia-suggestion-razon">${escapeHtml(s.razon)}</div>` : ''}
+            </div>
+            <div class="ia-suggestion-actions">
+              <button class="btn-ia-accept" onclick="acceptIaSuggestion(${i}, '${ventureId}')">✓ Crear</button>
+              <button class="btn-ia-reject" onclick="rejectIaSuggestion(${i})">✗</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) {
+    container.innerHTML = `<div class="ia-suggestions-panel"><div class="ia-empty">Error al conectar con la IA: ${escapeHtml(e.message)}</div></div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Analizar con IA'; }
+  }
+}
+
+async function acceptIaSuggestion(index, fallbackVentureId) {
+  const sug = (window._iaSuggestions || [])[index];
+  if (!sug) return;
+  const card = document.getElementById(`ia-sug-${index}`);
+  if (card) { card.style.opacity = '0.4'; card.style.pointerEvents = 'none'; }
+  const ventureId = sug.venture_id || fallbackVentureId || null;
+  const payload = {
+    titulo: sug.titulo,
+    venture_id: ventureId,
+    prioridad: 'media',
+    fecha_limite: sug.fecha_limite || null,
+    estado: 'pendiente',
+    creado_por: currentUserProfile?.id || null,
+  };
+  const { data, error } = await sb.from('tasks').insert(payload).select('id').single();
+  if (error || !data?.id) {
+    if (card) { card.style.opacity = ''; card.style.pointerEvents = ''; }
+    alert(`No se pudo crear la tarea: ${error?.message || 'Error desconocido'}`);
+    return;
+  }
+  if (sug.assignee_id) {
+    await sb.from('tasks').update({ titulo: `${sug.titulo} @${usersData.find(u => String(u.id) === String(sug.assignee_id))?.nombre || sug.assignee_id}` }).eq('id', data.id);
+  }
+  await logActivity('creó una tarea desde sugerencia de IA');
+  await loadTasks();
+  renderTasksPanel();
+  if (card) {
+    card.innerHTML = `<div class="ia-suggestion-body"><div class="ia-suggestion-titulo" style="color:var(--gold-dim)">✓ Tarea creada</div></div>`;
+  }
+}
+
+function rejectIaSuggestion(index) {
+  const card = document.getElementById(`ia-sug-${index}`);
+  if (card) {
+    card.style.transition = 'opacity 0.2s';
+    card.style.opacity = '0';
+    setTimeout(() => card.remove(), 200);
+  }
+}
+
 function taskMatchesVentureTag(task, venture) {
   if (!task?.titulo || !venture?.nombre) return false;
   const raw = cleanTaskTitle(task.titulo);
@@ -2285,7 +2466,9 @@ function renderVenturesDetail() {
           <div class="venture-notes-actions">
             <span class="venture-notes-hint">Selecciona texto (o línea actual) y envía al inbox.</span>
             <button type="button" class="btn btn-secondary btn-send-note-inbox" onclick="sendNoteSelectionToInbox()">→ Inbox libre</button>
+            <button type="button" class="btn btn-secondary" onclick="analyzeVentureNotes('${selected.id}')" id="btn-ia-analyze">✨ Analizar con IA</button>
           </div>
+          <div id="ia-suggestions-container"></div>
         </div>
       </div>
       <div id="venture-tab-tareas" ${notasActiva ? 'style="display:none"' : ''}>
