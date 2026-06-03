@@ -3697,8 +3697,22 @@ function toggleInboxChip(chip) {
     case 'delegar':   if (!/(^|\s)@/.test(text)) text = text + ' @'; break;
     case 'entidad':   if (!/(^|\s)#/.test(text)) text = text + ' #'; break;
   }
-  updateInboxLine(line.id, text.trim());
-  focusInboxLine(line.id);
+  const newText = text.trim();
+  // Actualizar modelo
+  line.text = newText;
+  saveInboxLines();
+  // Actualizar DOM directamente sin re-renderizar toda la lista
+  const ta = document.querySelector(`.notes-line-input[data-line-id="${line.id}"]`);
+  if (ta) {
+    ta.value = newText;
+    autosizeNoteTextarea(ta);
+    ta.focus();
+    ta.setSelectionRange(newText.length, newText.length);
+  }
+  renderInboxPreview();
+  updateQuickChipStates();
+  scheduleSyncLinkedInboxLine(line.id);
+  if (!notesTaskLinkMap[line.id]) scheduleAutoSendCheck(line.id);
 }
 
 function updateInlineSuggestions() {
