@@ -1344,6 +1344,47 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-left: 2px solid var(--green, #4ade80);
   color: var(--green, #4ade80);
 }
+.cal-event-native {
+  background: rgba(212,175,55,0.18);
+  border-left: 2px solid var(--gold-dim);
+  color: var(--gold);
+  cursor: pointer;
+}
+.cal-event-native:hover { background: rgba(212,175,55,0.3); }
+.cal-allday-row {
+  display: grid;
+  grid-template-columns: 44px repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  min-height: 24px;
+  background: var(--surface2);
+}
+.cal-allday-cell {
+  border-left: 1px solid var(--border);
+  padding: 2px 3px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  cursor: pointer;
+}
+.cal-allday-cell:hover { background: rgba(212,175,55,0.06); }
+.cal-task-chip {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  background: var(--gold-bg);
+  color: var(--gold);
+  border: 1px solid var(--gold-dim);
+  opacity: 0.85;
+}
+.cal-task-chip.completado { opacity: 0.45; }
+.cal-day-col-click {
+  position: absolute; inset: 0; z-index: 0; cursor: crosshair;
+}
 .ia-suggestions-panel {
   border-top: 1px solid var(--border);
   padding: 14px 16px;
@@ -1670,6 +1711,13 @@ select.form-input option { background: var(--surface2); color: var(--text); }
             <span class="theme-icon">🌙</span>
           </div>
         </div>
+        <div class="sidebar-setting-row" id="sidebar-gcal-row" style="display:none;">
+          <div class="sidebar-setting-label">
+            <span class="sidebar-icon">▦</span>
+            <span>Google Cal</span>
+          </div>
+          <button id="sidebar-gcal-btn" class="task-action-btn" style="font-size:10px;"></button>
+        </div>
       </div>
     </div>
 
@@ -1838,18 +1886,56 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 
       <!-- CALENDARIO -->
       <div class="page" id="page-calendario">
-        <div class="page-header page-header-title-only">
+        <div class="page-header">
           <div class="page-header-copy">
             <div class="page-title">Calendario</div>
-            <div class="page-sub" id="cal-subtitle">Gestión de disponibilidad</div>
+            <div class="page-sub" id="cal-subtitle">Planificación del holding</div>
           </div>
+          <div class="header-actions" id="cal-header-actions"></div>
         </div>
-        <div id="calendario-content" style="max-width:700px;"></div>
+        <div id="calendario-content"></div>
       </div>
 
     </div><!-- /main -->
   </div><!-- /app-body -->
 </div><!-- /app -->
+
+<!-- MODAL NUEVO EVENTO CALENDARIO -->
+<div class="modal-overlay" id="cal-event-modal" style="display:none;" onclick="closeCalEventModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:440px;">
+    <div class="modal-title" id="cal-event-modal-title">Nuevo evento</div>
+    <div class="form-group">
+      <label class="form-label">Título</label>
+      <input type="text" class="form-input" id="cal-ev-titulo" placeholder="¿Qué hay que hacer?">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Inicio</label>
+        <input type="datetime-local" class="form-input" id="cal-ev-inicio">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fin</label>
+        <input type="datetime-local" class="form-input" id="cal-ev-fin">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Venture</label>
+      <select class="form-input" id="cal-ev-venture">
+        <option value="">— Sin venture —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notas</label>
+      <textarea class="form-input" id="cal-ev-notas" style="min-height:60px;resize:vertical;" placeholder="Detalles adicionales…"></textarea>
+    </div>
+    <input type="hidden" id="cal-ev-edit-id">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+      <button class="task-action-btn" id="cal-ev-delete-btn" style="display:none;color:var(--red,#f87171);" onclick="deleteCalEvent()">Eliminar</button>
+      <button class="task-action-btn" onclick="closeCalEventModal()">Cancelar</button>
+      <button class="btn btn-primary-sm" onclick="saveCalEvent()">Guardar</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL NUEVA TAREA -->
 <div class="modal-overlay" id="task-modal" style="display:none;" onclick="closeTaskModal(event)">
@@ -2019,6 +2105,7 @@ let selectedSlotIndex = null;
 let presenceDuration = 60;
 let calWeekOffset = 0;
 let calEvents = [];
+let calNativeEvents = [];
 let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -2124,19 +2211,21 @@ function connectGoogleCalendar() {
 }
 
 async function disconnectGoogleCalendar() {
-  if (!confirm('¿Desconectar Google Calendar? Dejarás de ver slots de disponibilidad.')) return;
+  if (!confirm('¿Desconectar Google Calendar?')) return;
   await sb.from('calendar_tokens').delete().eq('user_id', currentProfileId);
   gcalConnected = false;
+  updateSidebarGcal();
   renderCalendario();
 }
 
 async function checkGcalConnection() {
-  if (currentUserRole !== 'owner' || !currentProfileId) { gcalConnected = false; return; }
+  if (currentUserRole !== 'owner' || !currentProfileId) { gcalConnected = false; updateSidebarGcal(); return; }
   try {
     const res = await fetch(`/api/calendar/status?user_id=${currentProfileId}`);
     const data = await res.json();
     gcalConnected = !!data.connected;
   } catch (_) { gcalConnected = false; }
+  updateSidebarGcal();
 }
 
 async function loadPresenceRequests() {
@@ -2155,7 +2244,7 @@ async function loadCalendario() {
   const container = document.getElementById('calendario-content');
   if (!container) return;
   container.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-text">Cargando…</div></div>`;
-  await Promise.all([checkGcalConnection(), loadPresenceRequests()]);
+  await Promise.all([checkGcalConnection(), loadPresenceRequests(), loadCalNativeEvents()]);
   if (gcalConnected && currentUserRole === 'owner') {
     await loadCalendarioEvents();
   } else {
@@ -2163,14 +2252,25 @@ async function loadCalendario() {
   }
 }
 
+async function loadCalNativeEvents() {
+  if (currentUserRole !== 'owner') return;
+  const weekStart = getCalWeekStart();
+  const weekEnd   = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
+  const { data } = await sb.from('cal_events')
+    .select('*, venture:ventures(nombre,emoji)')
+    .gte('inicio', weekStart.toISOString())
+    .lt('inicio', weekEnd.toISOString())
+    .order('inicio', { ascending: true });
+  calNativeEvents = data || [];
+}
+
 async function loadCalendarioEvents() {
   calEvents = [];
-  const owner = usersData.find(u => u.rol === 'owner');
-  if (!owner || !gcalConnected) { renderCalendario(); return; }
+  if (!currentProfileId || !gcalConnected) { renderCalendario(); return; }
   const weekStart = getCalWeekStart();
   const weekEnd   = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
   try {
-    const res = await fetch(`/api/calendar/events?user_id=${owner.id}&time_min=${weekStart.toISOString()}&time_max=${weekEnd.toISOString()}`);
+    const res = await fetch(`/api/calendar/events?user_id=${currentProfileId}&time_min=${weekStart.toISOString()}&time_max=${weekEnd.toISOString()}`);
     const data = await res.json();
     calEvents = data.connected ? (data.events || []) : [];
   } catch(_) { calEvents = []; }
@@ -2187,9 +2287,106 @@ function getCalWeekStart() {
   return mon;
 }
 
+function updateSidebarGcal() {
+  const row = document.getElementById('sidebar-gcal-row');
+  const btn = document.getElementById('sidebar-gcal-btn');
+  if (!row || !btn) return;
+  if (currentUserRole !== 'owner') { row.style.display = 'none'; return; }
+  row.style.display = '';
+  if (gcalConnected) {
+    btn.textContent = 'Desconectar';
+    btn.onclick = () => disconnectGoogleCalendar();
+    btn.style.color = 'var(--text3)';
+  } else {
+    btn.textContent = 'Conectar';
+    btn.onclick = () => connectGoogleCalendar();
+    btn.style.color = 'var(--gold)';
+  }
+}
+
+// ── MODAL NUEVO EVENTO ─────────────────────────────────────────────────
+function openNewEventModal(isoStart) {
+  const modal = document.getElementById('cal-event-modal');
+  if (!modal) return;
+  document.getElementById('cal-event-modal-title').textContent = 'Nuevo evento';
+  document.getElementById('cal-ev-titulo').value = '';
+  document.getElementById('cal-ev-notas').value = '';
+  document.getElementById('cal-ev-edit-id').value = '';
+  document.getElementById('cal-ev-delete-btn').style.display = 'none';
+  // populate ventures
+  const sel = document.getElementById('cal-ev-venture');
+  sel.innerHTML = '<option value="">— Sin venture —</option>' +
+    venturesData.map(v => `<option value="${v.id}">${escapeHtml(v.emoji||'')} ${escapeHtml(v.nombre)}</option>`).join('');
+  // Set default start/end
+  const start = isoStart ? new Date(isoStart) : new Date();
+  start.setSeconds(0,0);
+  const end = new Date(start.getTime() + 60*60000);
+  const toLocal = d => new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  document.getElementById('cal-ev-inicio').value = toLocal(start);
+  document.getElementById('cal-ev-fin').value = toLocal(end);
+  modal.style.display = 'flex';
+  setTimeout(() => document.getElementById('cal-ev-titulo').focus(), 100);
+}
+
+function openEditEventModal(id) {
+  const ev = calNativeEvents.find(e => e.id === id);
+  if (!ev) return;
+  const modal = document.getElementById('cal-event-modal');
+  document.getElementById('cal-event-modal-title').textContent = 'Editar evento';
+  document.getElementById('cal-ev-titulo').value = ev.titulo;
+  document.getElementById('cal-ev-notas').value = ev.notas || '';
+  document.getElementById('cal-ev-edit-id').value = ev.id;
+  document.getElementById('cal-ev-delete-btn').style.display = '';
+  const sel = document.getElementById('cal-ev-venture');
+  sel.innerHTML = '<option value="">— Sin venture —</option>' +
+    venturesData.map(v => `<option value="${v.id}" ${v.id===ev.venture_id?'selected':''}>${escapeHtml(v.emoji||'')} ${escapeHtml(v.nombre)}</option>`).join('');
+  const toLocal = d => new Date(new Date(d).getTime() - new Date(d).getTimezoneOffset()*60000).toISOString().slice(0,16);
+  document.getElementById('cal-ev-inicio').value = toLocal(ev.inicio);
+  document.getElementById('cal-ev-fin').value = toLocal(ev.fin);
+  modal.style.display = 'flex';
+}
+
+function closeCalEventModal(e) {
+  if (e && e.target !== document.getElementById('cal-event-modal')) return;
+  document.getElementById('cal-event-modal').style.display = 'none';
+}
+
+async function saveCalEvent() {
+  const titulo = document.getElementById('cal-ev-titulo').value.trim();
+  const inicio = document.getElementById('cal-ev-inicio').value;
+  const fin    = document.getElementById('cal-ev-fin').value;
+  const venture_id = document.getElementById('cal-ev-venture').value || null;
+  const notas  = document.getElementById('cal-ev-notas').value.trim() || null;
+  const editId = document.getElementById('cal-ev-edit-id').value;
+  if (!titulo) { alert('Escribe un título'); return; }
+  if (!inicio || !fin) { alert('Selecciona inicio y fin'); return; }
+  if (new Date(inicio) >= new Date(fin)) { alert('El fin debe ser después del inicio'); return; }
+
+  const payload = { titulo, inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(), venture_id, notas };
+  let error;
+  if (editId) {
+    ({ error } = await sb.from('cal_events').update(payload).eq('id', editId));
+  } else {
+    ({ error } = await sb.from('cal_events').insert(payload));
+  }
+  if (error) { alert('Error: ' + error.message); return; }
+  document.getElementById('cal-event-modal').style.display = 'none';
+  await loadCalNativeEvents();
+  renderCalendario();
+}
+
+async function deleteCalEvent() {
+  const editId = document.getElementById('cal-ev-edit-id').value;
+  if (!editId || !confirm('¿Eliminar este evento?')) return;
+  await sb.from('cal_events').delete().eq('id', editId);
+  document.getElementById('cal-event-modal').style.display = 'none';
+  await loadCalNativeEvents();
+  renderCalendario();
+}
+
 function renderWeekView() {
-  const CAL_START = 6, CAL_END = 23;
-  const HOUR_PX = 64, HOURS = CAL_END - CAL_START;
+  const CAL_START = 7, CAL_END = 22;
+  const HOUR_PX = 60, HOURS = CAL_END - CAL_START;
   const TOTAL_H = HOURS * HOUR_PX;
   const DAYS_ES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
@@ -2204,82 +2401,136 @@ function renderWeekView() {
     return (d.getHours()*60 + d.getMinutes() - CAL_START*60) * (HOUR_PX/60);
   };
 
-  // Time labels
+  // Time labels column
   const timeLabels = Array.from({length:HOURS+1}, (_,h) => {
     const hr = CAL_START+h;
     const lbl = hr<12?`${hr}am`:hr===12?'12pm':`${hr-12}pm`;
     return `<div style="position:absolute;top:${h*HOUR_PX}px;right:5px;transform:translateY(-50%);font-size:9px;color:var(--text3);white-space:nowrap;">${lbl}</div>`;
   }).join('');
 
-  // Grid lines
+  // Grid lines (reusable per column)
   const gridLines = Array.from({length:HOURS}, (_,h) => `
-    <div style="position:absolute;top:${h*HOUR_PX}px;left:0;right:0;border-top:1px solid var(--border);opacity:0.4;"></div>
-    <div style="position:absolute;top:${h*HOUR_PX+HOUR_PX/2}px;left:0;right:0;border-top:1px dashed var(--border);opacity:0.18;"></div>
+    <div style="position:absolute;top:${h*HOUR_PX}px;left:0;right:0;border-top:1px solid var(--border);opacity:0.35;pointer-events:none;"></div>
+    <div style="position:absolute;top:${h*HOUR_PX+HOUR_PX/2}px;left:0;right:0;border-top:1px dashed var(--border);opacity:0.15;pointer-events:none;"></div>
   `).join('');
 
   // Now line
   const now = new Date();
   const nowY = (now.getHours()*60 + now.getMinutes() - CAL_START*60) * (HOUR_PX/60);
-  const nowLine = (nowY>0 && nowY<TOTAL_H) ? `<div style="position:absolute;top:${nowY}px;left:0;right:0;height:2px;background:var(--red,#f87171);z-index:3;pointer-events:none;"></div>` : '';
+  const nowLine = (nowY>0 && nowY<TOTAL_H) ? `<div style="position:absolute;top:${nowY}px;left:0;right:0;height:2px;background:var(--red,#f87171);z-index:4;pointer-events:none;"></div>` : '';
 
+  // Day headers
   const dayHeaders = days.map((d,i) => {
     const isToday = d.getTime()===today.getTime();
     return `<div class="cal-day-header ${isToday?'today':''}">${DAYS_ES[i]}<br><strong>${d.getDate()}</strong></div>`;
   }).join('');
 
+  // All-day row: tasks with fecha_limite on each day
+  const alldayRow = `<div class="cal-allday-row">
+    <div style="background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--text3);border-bottom:1px solid var(--border);">Todo el día</div>
+    ${days.map(d => {
+      const dayStr = d.toISOString().slice(0,10);
+      const dayTasks = tasksData.filter(t => t.fecha_limite === dayStr);
+      const chips = dayTasks.map(t =>
+        `<div class="cal-task-chip" title="${escapeHtml(t.titulo)}">${escapeHtml(t.titulo)}</div>`
+      ).join('');
+      return `<div class="cal-allday-cell" onclick="openNewEventModal('${d.toISOString().slice(0,10)}T09:00:00')" title="Click para crear evento">${chips}</div>`;
+    }).join('')}
+  </div>`;
+
+  // Day columns
   const dayCols = days.map((d,i) => {
     const isToday = d.getTime()===today.getTime();
     const dayStr = d.toISOString().slice(0,10);
+    const dayIso = d.toISOString().slice(0,10);
 
+    // Native events
+    const nativeBlocks = calNativeEvents
+      .filter(ev => ev.inicio?.slice(0,10)===dayStr)
+      .map(ev => {
+        const top = toPx(ev.inicio); if (top < -20 || top > TOTAL_H) return '';
+        const dur = (new Date(ev.fin)-new Date(ev.inicio))/60000;
+        const h = Math.max(20, Math.min(dur*(HOUR_PX/60), TOTAL_H-top));
+        const vLabel = ev.venture ? ` · ${escapeHtml(ev.venture.emoji||'')}${escapeHtml(ev.venture.nombre)}` : '';
+        return `<div class="cal-event-block cal-event-native" style="top:${top}px;height:${h}px;z-index:2;" title="${escapeHtml(ev.titulo)}" onclick="event.stopPropagation();openEditEventModal('${ev.id}')">${escapeHtml(ev.titulo)}${vLabel}</div>`;
+      }).join('');
+
+    // GCal overlay
     const gcalBlocks = calEvents
       .filter(ev => !ev.allDay && ev.start?.slice(0,10)===dayStr)
       .map(ev => {
-        const top = toPx(ev.start);
-        if (top < -20 || top > TOTAL_H) return '';
+        const top = toPx(ev.start); if (top < -20 || top > TOTAL_H) return '';
         const dur = (new Date(ev.end)-new Date(ev.start))/60000;
         const h = Math.max(20, Math.min(dur*(HOUR_PX/60), TOTAL_H-top));
         return `<div class="cal-event-block cal-event-gcal" style="top:${top}px;height:${h}px;" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>`;
       }).join('');
 
+    // Presence requests
     const presBlocks = presenceRequestsData
       .filter(r => r.fecha_propuesta && new Date(r.fecha_propuesta).toISOString().slice(0,10)===dayStr)
       .map(r => {
-        const top = toPx(r.fecha_propuesta);
-        if (top < -20 || top > TOTAL_H) return '';
+        const top = toPx(r.fecha_propuesta); if (top < -20 || top > TOTAL_H) return '';
         const h = Math.max(20, (r.duracion_min||60)*(HOUR_PX/60));
         const cls = r.estado==='aprobado'?'cal-event-presence-approved':'cal-event-presence-pending';
-        const icon = r.estado==='aprobado'?'✓':'⏳';
-        return `<div class="cal-event-block ${cls}" style="top:${top}px;height:${h}px;" title="${escapeHtml(r.titulo)}">${icon} ${escapeHtml(r.titulo)}</div>`;
+        return `<div class="cal-event-block ${cls}" style="top:${top}px;height:${h}px;" title="${escapeHtml(r.titulo)}">${r.estado==='aprobado'?'✓':'⏳'} ${escapeHtml(r.titulo)}</div>`;
       }).join('');
 
-    return `<div style="border-left:1px solid var(--border);position:relative;min-height:${TOTAL_H}px;${isToday?'background:rgba(212,175,55,0.03)':''}">      ${gridLines}${isToday?nowLine:''}${gcalBlocks}${presBlocks}</div>`;
+    return `<div style="border-left:1px solid var(--border);position:relative;min-height:${TOTAL_H}px;cursor:crosshair;${isToday?'background:rgba(212,175,55,0.025)':''}" onclick="handleCalDayClick(event,'${dayIso}',${CAL_START})" title="Click para crear evento">
+      ${gridLines}${isToday?nowLine:''}${gcalBlocks}${nativeBlocks}${presBlocks}
+    </div>`;
   }).join('');
+
+  const isGcal = gcalConnected;
 
   return `
     <div class="cal-week-wrapper">
       <div class="cal-week-nav">
-        <button class="task-action-btn" onclick="calWeekOffset--;loadCalendarioEvents()">&#8249; Anterior</button>
+        <button class="task-action-btn" onclick="calWeekOffset--;reloadCalWeek()">&#8249; Anterior</button>
         <div class="cal-week-title">${title}</div>
-        ${calWeekOffset!==0?`<button class="task-action-btn" onclick="calWeekOffset=0;loadCalendarioEvents()">Hoy</button>`:''}
-        <button class="task-action-btn" onclick="calWeekOffset++;loadCalendarioEvents()">Siguiente &#8250;</button>
+        ${calWeekOffset!==0?`<button class="task-action-btn" onclick="calWeekOffset=0;reloadCalWeek()">Hoy</button>`:''}
+        <button class="task-action-btn" onclick="calWeekOffset++;reloadCalWeek()">Siguiente &#8250;</button>
       </div>
-      <div style="display:grid;grid-template-columns:44px repeat(7,1fr)">
+      <div style="display:grid;grid-template-columns:44px repeat(7,1fr);">
         <div style="background:var(--surface2);border-bottom:1px solid var(--border);"></div>
         ${dayHeaders}
       </div>
-      <div style="overflow-y:auto;max-height:480px;">
+      ${alldayRow}
+      <div style="overflow-y:auto;max-height:520px;">
         <div style="display:grid;grid-template-columns:44px repeat(7,1fr);">
           <div style="position:relative;min-height:${TOTAL_H}px;background:var(--surface2);">${timeLabels}</div>
           ${dayCols}
         </div>
       </div>
-      <div style="padding:8px 12px;font-size:9px;color:var(--text3);border-top:1px solid var(--border);display:flex;gap:14px;">
-        <span><span style="display:inline-block;width:8px;height:8px;background:rgba(96,165,250,0.3);border-left:2px solid #60a5fa;margin-right:4px;"></span>Google Calendar</span>
-        <span><span style="display:inline-block;width:8px;height:8px;background:var(--gold-bg);border-left:2px solid var(--gold-dim);margin-right:4px;"></span>Solicitud pendiente</span>
-        <span><span style="display:inline-block;width:8px;height:8px;background:rgba(74,222,128,0.15);border-left:2px solid var(--green,#4ade80);margin-right:4px;"></span>Aprobado</span>
+      <div style="padding:7px 12px;font-size:9px;color:var(--text3);border-top:1px solid var(--border);display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+        <span><span style="display:inline-block;width:8px;height:8px;background:rgba(212,175,55,0.18);border-left:2px solid var(--gold-dim);margin-right:4px;"></span>Evento propio</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--gold-bg);border-left:2px solid var(--gold-dim);margin-right:4px;opacity:.6;"></span>Tarea</span>
+        ${isGcal?`<span><span style="display:inline-block;width:8px;height:8px;background:rgba(96,165,250,0.3);border-left:2px solid #60a5fa;margin-right:4px;"></span>Google Calendar</span>`:''}
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--gold-bg);border-left:2px solid var(--gold-dim);margin-right:4px;"></span>Presencia pendiente</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:rgba(74,222,128,0.15);border-left:2px solid var(--green,#4ade80);margin-right:4px;"></span>Presencia aprobada</span>
         <span style="margin-left:auto;"><span style="display:inline-block;width:16px;height:2px;background:var(--red,#f87171);vertical-align:middle;margin-right:4px;"></span>Ahora</span>
       </div>
     </div>`;
+}
+
+function handleCalDayClick(e, dayIso, calStart) {
+  // Calculate hour from click position within the column
+  const col = e.currentTarget;
+  const rect = col.getBoundingClientRect();
+  const y = e.clientY - rect.top + col.parentElement.parentElement.scrollTop;
+  const minutes = y / (60/60) + calStart * 60;
+  const h = Math.floor(minutes / 60);
+  const m = Math.floor(minutes % 60 / 30) * 30; // round to 30min
+  const hh = String(Math.max(calStart, Math.min(21, h))).padStart(2,'0');
+  const mm = String(m).padStart(2,'0');
+  openNewEventModal(`${dayIso}T${hh}:${mm}:00`);
+}
+
+async function reloadCalWeek() {
+  const container = document.getElementById('calendario-content');
+  if (container) container.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-text">Cargando…</div></div>`;
+  await loadCalNativeEvents();
+  if (gcalConnected) await loadCalendarioEvents();
+  else renderCalendario();
 }
 
 async function loadAvailableSlots(durationMin) {
@@ -2389,25 +2640,13 @@ function renderCalendario() {
 
   // ── CALENDAR WEEK VIEW (owner) ──────────────────────────────────────
   if (isOwner) {
+    const ha = document.getElementById('cal-header-actions');
+    if (ha) ha.innerHTML = `<button class="btn btn-primary-sm" onclick="openNewEventModal()">+ Evento</button>`;
     html += renderWeekView();
   }
 
-  // ── STATUS BAR (owner only) ─────────────────────────────────────────
+  // ── PENDING REQUESTS for owner ──────────────────────────────────────
   if (isOwner) {
-    html += `
-      <div class="gcal-status-bar">
-        <div class="gcal-dot ${gcalConnected ? 'connected' : 'disconnected'}"></div>
-        <div class="gcal-status-label">
-          ${gcalConnected
-            ? 'Google Calendar conectado'
-            : 'Google Calendar no conectado'}
-        </div>
-        ${gcalConnected
-          ? `<button class="task-action-btn" onclick="disconnectGoogleCalendar()">Desconectar</button>`
-          : `<button class="btn btn-primary-sm" onclick="connectGoogleCalendar()">Conectar Google Calendar</button>`}
-      </div>`;
-
-    // ── PENDING REQUESTS for owner ──────────────────────────────────────
     html += `<div class="panel" style="margin-bottom:16px;">
       <div class="panel-header">
         <div class="panel-title">Solicitudes de presencia</div>
