@@ -55,7 +55,7 @@ export default async function handler(req) {
   let body;
   try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 }); }
 
-  const { userId, gcalEventId, titulo, inicio, fin, notas, recurrencia, recordatorios } = body;
+  const { userId, gcalEventId, titulo, inicio, fin, notas, rrule, recordatorios } = body;
   if (!userId || !titulo || !inicio || !fin) {
     return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
   }
@@ -71,9 +71,9 @@ export default async function handler(req) {
     end:   { dateTime: fin,   timeZone: 'America/Lima' },
   };
 
-  // Recurrencia
-  if (recurrencia && recurrencia !== 'none') {
-    gcalEvent.recurrence = [`RRULE:FREQ=${recurrencia}`];
+  // Recurrencia (rrule string pre-construida, ej: "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE")
+  if (rrule) {
+    gcalEvent.recurrence = [rrule];
   }
 
   // Recordatorios (array de minutos)

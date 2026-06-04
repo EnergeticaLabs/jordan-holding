@@ -1924,21 +1924,35 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <option value="">— Sin venture —</option>
       </select>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div class="form-group">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;">
+      <div class="form-group" style="margin-bottom:0">
         <label class="form-label">Repetir</label>
-        <select class="form-input" id="cal-ev-recurrencia">
+        <select class="form-input" id="cal-ev-recurrencia" onchange="calOnRepeatChange(this.value)">
           <option value="none">No se repite</option>
           <option value="DAILY">Cada día</option>
           <option value="WEEKLY">Cada semana</option>
           <option value="MONTHLY">Cada mes</option>
           <option value="YEARLY">Cada año</option>
+          <option value="CUSTOM">Personalizado…</option>
         </select>
       </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;">Recordatorios <button type="button" onclick="calAddReminder()" style="background:none;border:none;cursor:pointer;color:var(--gold);font-size:12px;padding:0;">+ Agregar</button></label>
+        <div id="cal-ev-reminders" style="display:flex;flex-direction:column;gap:5px;"></div>
+      </div>
     </div>
-    <div class="form-group">
-      <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;">Recordatorios <button type="button" onclick="calAddReminder()" style="background:none;border:none;cursor:pointer;color:var(--gold);font-size:12px;padding:0;">+ Agregar</button></label>
-      <div id="cal-ev-reminders" style="display:flex;flex-direction:column;gap:6px;"></div>
+    <div id="cal-ev-custom-rec" style="display:none;" class="form-group">
+      <div style="display:flex;gap:6px;align-items:center;">
+        <span style="font-size:13px;color:var(--text2);">Cada</span>
+        <input type="number" class="form-input" id="cal-ev-rec-interval" style="width:60px;" min="1" max="999" value="1">
+        <select class="form-input" id="cal-ev-rec-unit" style="flex:1;" onchange="_calRecUnitChange(this.value)">
+          <option value="DAILY">días</option>
+          <option value="WEEKLY">semanas</option>
+          <option value="MONTHLY">meses</option>
+          <option value="YEARLY">años</option>
+        </select>
+      </div>
+      <div id="cal-ev-rec-weekdays" style="display:none;margin-top:8px;"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Notas</label>
@@ -2285,14 +2299,21 @@ async function loadCalNativeEvents() {
 }
 
 async function loadCalendarioEvents() {
-  calEvents = [];
   if (!currentProfileId || !gcalConnected) { renderCalendario(); return; }
   const weekStart = getCalWeekStart();
   const weekEnd   = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
+  // Mostrar cache inmediatamente
+  const cacheKey = `vfh-gcal-${weekStart.toISOString().slice(0,10)}-${currentProfileId}`;
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) { calEvents = JSON.parse(cached); renderCalendario(); }
+  } catch(_) {}
+  // Fetch en background
   try {
     const res = await fetch(`/api/calendar/events?user_id=${currentProfileId}&time_min=${weekStart.toISOString()}&time_max=${weekEnd.toISOString()}`);
     const data = await res.json();
     calEvents = data.connected ? (data.events || []) : [];
+    try { localStorage.setItem(cacheKey, JSON.stringify(calEvents)); } catch(_) {}
   } catch(_) { calEvents = []; }
   renderCalendario();
 }
@@ -2339,6 +2360,8 @@ function openNewEventModal(isoStart) {
   document.getElementById('cal-ev-edit-id').value = '';
   document.getElementById('cal-ev-delete-btn').style.display = 'none';
   document.getElementById('cal-ev-recurrencia').value = 'none';
+  _calRecSelectedDays = [];
+  calOnRepeatChange('none');
   calSetReminders([30]); // recordatorio por defecto: 30 min
   _setCalModalGcalHint();
   // populate ventures
@@ -2368,7 +2391,8 @@ function openEditEventModal(id) {
   // Leer meta de recurrencia/recordatorio desde campo color (JSON)
   let meta = {};
   try { if (ev.color) meta = JSON.parse(ev.color); } catch(_){}
-  document.getElementById('cal-ev-recurrencia').value = meta.rec || 'none';
+  _calRecSelectedDays = meta.recDays || [];
+  calSetRecurrence(meta);
   // Compatibilidad: puede venir como rems[] o rem single
   const savedRems = meta.rems ? meta.rems : (meta.rem ? [meta.rem] : [30]);
   calSetReminders(savedRems);
@@ -2388,92 +2412,122 @@ function closeCalEventModal(e) {
 }
 
 // ── RECORDATORIOS MÚLTIPLES ─────────────────────────────────────────────
-const CAL_REM_OPTIONS = [
-  { label: '5 min',    value: 5 },
-  { label: '10 min',   value: 10 },
-  { label: '15 min',   value: 15 },
-  { label: '30 min',   value: 30 },
-  { label: '1 hora',   value: 60 },
-  { label: '2 horas',  value: 120 },
-  { label: '1 día',    value: 1440 },
-  { label: '2 días',   value: 2880 },
-  { label: 'Personalizado', value: -1 },
-];
-
-function _remLabel(min) {
-  const opt = CAL_REM_OPTIONS.find(o => o.value === min);
-  if (opt && opt.value !== -1) return opt.label + ' antes';
-  if (min < 60) return `${min} min antes`;
-  if (min < 1440) return `${min/60 % 1 === 0 ? min/60 : (min/60).toFixed(1)} h antes`;
-  const d = min / 1440;
-  return `${d % 1 === 0 ? d : d.toFixed(1)} día${d!==1?'s':''} antes`;
+function _minToUnit(min) {
+  if (min % 1440 === 0 && min >= 1440) return { val: min / 1440, unit: 'dias' };
+  if (min % 60 === 0 && min >= 60) return { val: min / 60, unit: 'horas' };
+  return { val: min, unit: 'min' };
+}
+function _unitToMin(val, unit) {
+  val = parseInt(val, 10) || 1;
+  if (unit === 'horas') return val * 60;
+  if (unit === 'dias') return val * 1440;
+  return val;
 }
 
 function _renderReminders() {
   const container = document.getElementById('cal-ev-reminders');
   if (!container) return;
-  const rems = calGetReminders();
-  container.innerHTML = rems.map((min, i) => `
-    <div style="display:flex;align-items:center;gap:6px;">
-      <select class="form-input" style="flex:1;font-size:13px;" onchange="_onRemChange(${i}, this.value)">
-        ${CAL_REM_OPTIONS.map(o => `<option value="${o.value}" ${(o.value===min||o.value===-1&&!CAL_REM_OPTIONS.find(x=>x.value===min&&x.value!==-1))?'selected':''}>${o.label}</option>`).join('')}
-      </select>
-      ${(min < 0 || !CAL_REM_OPTIONS.find(o => o.value === min && o.value !== -1)) ? `<input type="number" class="form-input" style="width:80px;font-size:13px;" min="1" max="40320" placeholder="min" value="${min > 0 ? min : ''}" onchange="_onRemCustom(${i}, this.value)">` : ''}
-      <button type="button" onclick="_removeReminder(${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;line-height:1;padding:0 2px;">&#215;</button>
-    </div>
-  `).join('');
+  const rems = container._rems || [];
   if (rems.length === 0) {
-    container.innerHTML = '<div style="font-size:12px;color:var(--text3);">Sin recordatorios</div>';
+    container.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 0;">Sin recordatorios</div>';
+    return;
   }
+  container.innerHTML = rems.map((min, i) => {
+    const { val, unit } = _minToUnit(min);
+    return `<div style="display:flex;align-items:center;gap:5px;">
+      <input type="number" class="form-input" style="width:55px;font-size:13px;text-align:center;" min="1" value="${val}" onchange="_onRemValChange(${i},this.value,'${unit}')">
+      <select class="form-input" style="flex:1;font-size:13px;" onchange="_onRemUnitChange(${i},this.value,${val})">
+        <option value="min"  ${unit==='min' ?'selected':''}>minutos antes</option>
+        <option value="horas" ${unit==='horas'?'selected':''}>horas antes</option>
+        <option value="dias"  ${unit==='dias' ?'selected':''}>días antes</option>
+      </select>
+      <button type="button" onclick="_removeReminder(${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;line-height:1;padding:0 2px;">&#215;</button>
+    </div>`;
+  }).join('');
 }
 
 function calGetReminders() {
-  const container = document.getElementById('cal-ev-reminders');
-  if (!container) return [];
-  return (container._rems || []);
+  const c = document.getElementById('cal-ev-reminders'); return c ? (c._rems || []) : [];
 }
-
 function calSetReminders(arr) {
-  const container = document.getElementById('cal-ev-reminders');
-  if (!container) return;
-  container._rems = arr.filter(v => Number.isFinite(v) && v > 0);
-  _renderReminders();
+  const c = document.getElementById('cal-ev-reminders'); if (!c) return;
+  c._rems = arr.filter(v => Number.isFinite(v) && v > 0); _renderReminders();
 }
-
 function calAddReminder() {
-  const container = document.getElementById('cal-ev-reminders');
-  if (!container) return;
-  if (!container._rems) container._rems = [];
-  container._rems = [...container._rems, 30];
-  _renderReminders();
+  const c = document.getElementById('cal-ev-reminders'); if (!c) return;
+  c._rems = [...(c._rems||[]), 30]; _renderReminders();
 }
-
 function _removeReminder(i) {
-  const container = document.getElementById('cal-ev-reminders');
-  if (!container) return;
-  container._rems.splice(i, 1);
-  _renderReminders();
+  const c = document.getElementById('cal-ev-reminders'); if (!c) return;
+  c._rems.splice(i,1); _renderReminders();
+}
+function _onRemValChange(i, val, unit) {
+  const c = document.getElementById('cal-ev-reminders'); if (!c) return;
+  c._rems[i] = _unitToMin(val, unit); _renderReminders();
+}
+function _onRemUnitChange(i, unit, val) {
+  const c = document.getElementById('cal-ev-reminders'); if (!c) return;
+  c._rems[i] = _unitToMin(val, unit); _renderReminders();
 }
 
-function _onRemChange(i, val) {
-  const container = document.getElementById('cal-ev-reminders');
-  if (!container) return;
-  const v = parseInt(val, 10);
-  if (v === -1) {
-    // personalizado: mantener -1 hasta que escriba
-    container._rems[i] = -1;
+// ── RECURRENCIA PERSONALIZADA ───────────────────────────────────────
+const CAL_WEEKDAYS = [
+  { key: 'MO', label: 'L' }, { key: 'TU', label: 'M' }, { key: 'WE', label: 'X' },
+  { key: 'TH', label: 'J' }, { key: 'FR', label: 'V' }, { key: 'SA', label: 'S' },
+  { key: 'SU', label: 'D' }
+];
+let _calRecSelectedDays = [];
+
+function calOnRepeatChange(val) {
+  const customRow = document.getElementById('cal-ev-custom-rec');
+  if (customRow) customRow.style.display = val === 'CUSTOM' ? '' : 'none';
+  if (val === 'CUSTOM') _calRenderWeekdays();
+}
+function _calRecUnitChange(unit) {
+  const wd = document.getElementById('cal-ev-rec-weekdays');
+  if (wd) wd.style.display = unit === 'WEEKLY' ? '' : 'none';
+  if (unit === 'WEEKLY') _calRenderWeekdays();
+}
+function _calRenderWeekdays() {
+  const unit = document.getElementById('cal-ev-rec-unit')?.value;
+  const wd = document.getElementById('cal-ev-rec-weekdays');
+  if (!wd) return;
+  if (unit !== 'WEEKLY') { wd.style.display = 'none'; return; }
+  wd.style.display = '';
+  wd.innerHTML = CAL_WEEKDAYS.map(d => `<button type="button" onclick="_calToggleDay('${d.key}')" id="cal-day-${d.key}" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:${_calRecSelectedDays.includes(d.key)?'var(--gold)':'transparent'};color:${_calRecSelectedDays.includes(d.key)?'#000':'var(--text2)'};cursor:pointer;font-size:12px;font-weight:600;">${d.label}</button>`).join('');
+}
+function _calToggleDay(key) {
+  const idx = _calRecSelectedDays.indexOf(key);
+  if (idx>=0) _calRecSelectedDays.splice(idx,1); else _calRecSelectedDays.push(key);
+  _calRenderWeekdays();
+}
+function calGetRecurrence() {
+  const sel = document.getElementById('cal-ev-recurrencia')?.value || 'none';
+  if (sel === 'none') return null;
+  if (sel !== 'CUSTOM') return `RRULE:FREQ=${sel}`;
+  const interval = parseInt(document.getElementById('cal-ev-rec-interval')?.value||'1',10)||1;
+  const unit = document.getElementById('cal-ev-rec-unit')?.value || 'DAILY';
+  let rule = `RRULE:FREQ=${unit};INTERVAL=${interval}`;
+  if (unit==='WEEKLY' && _calRecSelectedDays.length) rule += `;BYDAY=${_calRecSelectedDays.join(',')}`;
+  return rule;
+}
+function calSetRecurrence(meta) {
+  const sel = document.getElementById('cal-ev-recurrencia');
+  if (!sel) return;
+  const rec = meta?.rec || 'none';
+  if (['none','DAILY','WEEKLY','MONTHLY','YEARLY'].includes(rec)) {
+    sel.value = rec;
+    calOnRepeatChange(rec);
+  } else if (rec === 'CUSTOM') {
+    sel.value = 'CUSTOM';
+    _calRecSelectedDays = meta.recDays || [];
+    if (document.getElementById('cal-ev-rec-interval')) document.getElementById('cal-ev-rec-interval').value = meta.recInterval || 1;
+    if (document.getElementById('cal-ev-rec-unit')) document.getElementById('cal-ev-rec-unit').value = meta.recUnit || 'DAILY';
+    calOnRepeatChange('CUSTOM');
+    _calRecUnitChange(meta.recUnit || 'DAILY');
   } else {
-    container._rems[i] = v;
+    sel.value = 'none'; calOnRepeatChange('none');
   }
-  _renderReminders();
-}
-
-function _onRemCustom(i, val) {
-  const container = document.getElementById('cal-ev-reminders');
-  if (!container) return;
-  const v = parseInt(val, 10);
-  if (v > 0) container._rems[i] = v;
-  _renderReminders();
 }
 
 async function saveCalEvent() {
@@ -2483,12 +2537,17 @@ async function saveCalEvent() {
   const venture_id = document.getElementById('cal-ev-venture').value || null;
   const notas  = document.getElementById('cal-ev-notas').value.trim() || null;
   const editId = document.getElementById('cal-ev-edit-id').value;
-  const rec    = document.getElementById('cal-ev-recurrencia').value;
-  // Leer múltiples recordatorios
-  const rems = calGetReminders();
+  const rec    = document.getElementById('cal-ev-recurrencia')?.value || 'none';
+  const recInterval = parseInt(document.getElementById('cal-ev-rec-interval')?.value||'1',10)||1;
+  const recUnit = document.getElementById('cal-ev-rec-unit')?.value || 'DAILY';
+  const recDays = [..._calRecSelectedDays];
+  const rems   = calGetReminders();
   if (!titulo) { alert('Escribe un título'); return; }
   if (!inicio || !fin) { alert('Selecciona inicio y fin'); return; }
   if (new Date(inicio) >= new Date(fin)) { alert('El fin debe ser después del inicio'); return; }
+
+  const inicioISO = new Date(inicio).toISOString();
+  const finISO    = new Date(fin).toISOString();
 
   // Recuperar gcalId existente si es edición
   let existingMeta = {};
@@ -2497,71 +2556,88 @@ async function saveCalEvent() {
     try { if (ev?.color) existingMeta = JSON.parse(ev.color); } catch(_){}
   }
 
-  // Guardar en Supabase (color = JSON meta)
-  const meta = { rec, rems, gcalId: existingMeta.gcalId || null };
-  const payload = { titulo, inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(), venture_id, notas, color: JSON.stringify(meta) };
-  let error, savedId = editId;
-  if (editId) {
-    ({ error } = await sb.from('cal_events').update(payload).eq('id', editId));
-  } else {
-    const res = await sb.from('cal_events').insert(payload).select('id').single();
-    error = res.error;
-    savedId = res.data?.id;
-  }
-  if (error) { alert('Error: ' + error.message); return; }
+  const meta = { rec, recInterval, recUnit, recDays, rems, gcalId: existingMeta.gcalId || null };
+  const payload = { titulo, inicio: inicioISO, fin: finISO, venture_id, notas, color: JSON.stringify(meta) };
+  const rrule = calGetRecurrence();
 
-  // Cierre optimista: cerrar modal y mostrar evento inmediatamente
+  // ─ OPTIMISTA: cerrar y mostrar evento YA ─
+  const tempId = editId || ('opt-' + Date.now());
+  const optimisticEv = {
+    id: tempId, titulo, inicio: inicioISO, fin: finISO, venture_id, notas,
+    color: JSON.stringify(meta),
+    venture: venturesData.find(v => v.id === venture_id) || null
+  };
+  if (editId) {
+    const idx = calNativeEvents.findIndex(e => e.id === editId);
+    if (idx >= 0) calNativeEvents[idx] = optimisticEv;
+  } else {
+    calNativeEvents.push(optimisticEv);
+  }
   document.getElementById('cal-event-modal').style.display = 'none';
-  await loadCalNativeEvents();
   renderCalendario();
 
-  // Sincronizar con GCal en background (no bloquea UI)
-  if (gcalConnected && savedId) {
-    (async () => {
+  // ─ GUARDAR en background ─
+  (async () => {
+    let error, savedId = editId;
+    if (editId) {
+      ({ error } = await sb.from('cal_events').update(payload).eq('id', editId));
+    } else {
+      const res = await sb.from('cal_events').insert(payload).select('id').single();
+      error = res.error; savedId = res.data?.id;
+    }
+    if (error) {
+      if (!editId) calNativeEvents = calNativeEvents.filter(e => e.id !== tempId);
+      else await loadCalNativeEvents();
+      renderCalendario();
+      alert('Error al guardar: ' + error.message);
+      return;
+    }
+    if (!editId && savedId) {
+      const idx = calNativeEvents.findIndex(e => e.id === tempId);
+      if (idx >= 0) calNativeEvents[idx].id = savedId;
+    }
+    // GCal sync en background
+    if (gcalConnected && savedId) {
       try {
         const syncRes = await fetch('/api/calendar/sync-event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: currentProfileId,
-            eventId: savedId,
-            gcalEventId: existingMeta.gcalId || null,
-            titulo, inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(),
-            notas, recurrencia: rec, recordatorios: rems
-          })
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentProfileId, gcalEventId: existingMeta.gcalId || null,
+            titulo, inicio: inicioISO, fin: finISO, notas, rrule, recordatorios: rems })
         });
         const syncData = await syncRes.json();
         if (syncData.gcalEventId) {
-          const newMeta = { rec, rems, gcalId: syncData.gcalEventId };
+          const newMeta = { ...meta, gcalId: syncData.gcalEventId };
           await sb.from('cal_events').update({ color: JSON.stringify(newMeta) }).eq('id', savedId);
+          const idx = calNativeEvents.findIndex(e => e.id === savedId);
+          if (idx >= 0) calNativeEvents[idx].color = JSON.stringify(newMeta);
         }
       } catch(_) {}
-    })();
-  }
+    }
+  })();
 }
 
 async function deleteCalEvent() {
   const editId = document.getElementById('cal-ev-edit-id').value;
   if (!editId || !confirm('¿Eliminar este evento?')) return;
-  // Eliminar de Google Calendar si está vinculado
-  if (gcalConnected) {
-    const ev = calNativeEvents.find(e => e.id === editId);
-    let gcalId = null;
-    try { if (ev?.color) gcalId = JSON.parse(ev.color)?.gcalId; } catch(_){}
-    if (gcalId) {
+  const ev = calNativeEvents.find(e => e.id === editId);
+  let gcalId = null;
+  try { if (ev?.color) gcalId = JSON.parse(ev.color)?.gcalId; } catch(_){}
+  // OPTIMISTA: quitar del array y cerrar inmediatamente
+  calNativeEvents = calNativeEvents.filter(e => e.id !== editId);
+  document.getElementById('cal-event-modal').style.display = 'none';
+  renderCalendario();
+  // Borrar en background
+  (async () => {
+    await sb.from('cal_events').delete().eq('id', editId);
+    if (gcalConnected && gcalId) {
       try {
         await fetch('/api/calendar/sync-event', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: currentProfileId, gcalEventId: gcalId })
         });
       } catch(_) {}
     }
-  }
-  await sb.from('cal_events').delete().eq('id', editId);
-  document.getElementById('cal-event-modal').style.display = 'none';
-  await loadCalNativeEvents();
-  renderCalendario();
+  })();
 }
 
 function renderWeekView() {
