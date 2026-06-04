@@ -1692,6 +1692,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
           <span class="sidebar-icon">▦</span>Calendario
         </div>
       </div>
+      <div class="sidebar-section" id="sidebar-ventures-section">
+        <div class="sidebar-label">Ventures</div>
+        <div id="sidebar-ventures"></div>
+      </div>
       <div class="sidebar-section">
         <div class="sidebar-label">Ajustes</div>
         <div class="sidebar-setting-row">
@@ -2964,6 +2968,9 @@ function applyRoleVisibility() {
     const page = el.getAttribute('data-page');
     el.classList.toggle('is-hidden', !allowedPages.has(page));
   });
+
+  const venturesSection = document.getElementById('sidebar-ventures-section');
+  if (venturesSection) venturesSection.classList.toggle('is-hidden', currentUserRole === 'executor');
 }
 
 function isVentureAllowedForCurrentRole(ventureId) {
