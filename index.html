@@ -2513,6 +2513,8 @@ function renderWeekView() {
 }
 
 function handleCalDayClick(e, dayIso, calStart) {
+  // If click landed on an event block, let its own handler take over
+  if (e.target.closest('.cal-event-block')) return;
   // Calculate hour from click position within the column
   const col = e.currentTarget;
   const rect = col.getBoundingClientRect();
