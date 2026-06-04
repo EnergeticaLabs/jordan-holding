@@ -589,6 +589,80 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-bottom: 1px solid var(--border);
 }
 .executor-card:last-child { border-bottom: none; }
+.executor-card.locked-card {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.executor-today-badge {
+  display: inline-flex;align-items:center;gap:4px;font-size:10px;
+  background:var(--gold);color:#000;border-radius:4px;padding:2px 6px;font-weight:600;
+}
+
+/* ══ SCHEDULE GRID ══ */
+.sch-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.sch-day-col {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.sch-day-today {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+.sch-day-header {
+  text-align: center;
+  padding: 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  line-height: 1.4;
+}
+.sch-day-body {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 80px;
+}
+.sch-block {
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.sch-block:hover { opacity: 0.8; }
+.sch-add-btn {
+  width: 100%;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+  margin-top: 2px;
+}
+.sch-add-btn:hover { color: var(--gold); border-color: var(--gold); }
+
+/* ══ EXECUTOR PROGRESS BAR ══ */
+.exec-progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 6px 0 2px;
+}
+.exec-progress-fill {
+  height: 100%;
+  background: var(--gold);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
 
 /* ══ OWNER CONFIG ══ */
 .config-user-row {
@@ -1545,6 +1619,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   .ventures-detail-grid { grid-template-columns: 1fr; }
   .venture-kanban { grid-template-columns: 1fr; }
   .executor-board { grid-template-columns: 1fr; }
+  .sch-week-grid { grid-template-columns: repeat(3, 1fr); }
   .venture-header-side { margin-left: 0; justify-content: flex-start; }
   .notes-body { padding: 8px 10px; }
   .notes-preview { max-height: 132px; }
@@ -1690,6 +1765,12 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         </div>
         <div class="sidebar-item" data-page="calendario" onclick="setPage('calendario');closeSidebar()">
           <span class="sidebar-icon">▦</span>Calendario
+        </div>
+        <div class="sidebar-item" data-page="horarios" onclick="setPage('horarios');closeSidebar()">
+          <span class="sidebar-icon">⏱</span>Horarios
+        </div>
+        <div class="sidebar-item" data-page="mi-horario" onclick="setPage('mi-horario');closeSidebar()">
+          <span class="sidebar-icon">⏱</span>Mi Horario
         </div>
       </div>
       <div class="sidebar-section" id="sidebar-ventures-section">
@@ -1882,6 +1963,38 @@ select.form-input option { background: var(--surface2); color: var(--text); }
           </div>
           <div class="panel-body" id="team-list"></div>
         </div>
+      </div>
+
+      </div>
+
+      <!-- HORARIOS (owner/manager) -->
+      <div class="page" id="page-horarios">
+        <div class="page-header">
+          <div class="page-header-copy">
+            <div class="page-title">Horarios</div>
+            <div class="page-sub" id="horarios-sub">Gestiona los bloques de trabajo del equipo</div>
+          </div>
+          <div class="header-actions">
+            <select class="form-input" id="horarios-user-select" style="min-width:160px;" onchange="renderHorarios()"></select>
+          </div>
+        </div>
+        <div id="horarios-content"></div>
+      </div>
+
+      <!-- MI HORARIO (executor) -->
+      <div class="page" id="page-mi-horario">
+        <div class="page-header">
+          <div class="page-header-copy">
+            <div class="page-title">Mi Horario</div>
+            <div class="page-sub" id="mi-horario-sub">Tu semana de trabajo</div>
+          </div>
+          <div class="header-actions" id="mi-horario-nav">
+            <button class="task-action-btn" onclick="miHorarioOffset--;loadMiHorario()">&#8249;</button>
+            <button class="task-action-btn" id="mi-horario-hoy-btn" onclick="miHorarioOffset=0;loadMiHorario()">Hoy</button>
+            <button class="task-action-btn" onclick="miHorarioOffset++;loadMiHorario()">&#8250;</button>
+          </div>
+        </div>
+        <div id="mi-horario-content"></div>
       </div>
 
       <!-- CALENDARIO -->
@@ -2087,6 +2200,120 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   </div>
 </div>
 
+<!-- MODAL BLOQUE DE HORARIO -->
+<div class="modal-overlay" id="schedule-block-modal" style="display:none;" onclick="closeScheduleBlockModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:440px;">
+    <div class="modal-title" id="sb-modal-title">Nuevo bloque de trabajo</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Día</label>
+        <select class="form-input" id="sb-day">
+          <option value="1">Lunes</option>
+          <option value="2">Martes</option>
+          <option value="3">Miércoles</option>
+          <option value="4">Jueves</option>
+          <option value="5">Viernes</option>
+          <option value="6">Sábado</option>
+          <option value="7">Domingo</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Venture</label>
+        <select class="form-input" id="sb-venture"></select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Inicio</label>
+        <input type="time" class="form-input" id="sb-start" value="08:00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fin</label>
+        <input type="time" class="form-input" id="sb-end" value="09:30">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tipo</label>
+      <select class="form-input" id="sb-tipo">
+        <option value="operativo">Operativo (recurrente)</option>
+        <option value="programado">Programado (puntual)</option>
+        <option value="urgente">Urgente</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notas</label>
+      <textarea class="form-input" id="sb-notas" style="min-height:50px;resize:vertical;" placeholder="Instrucciones para el ejecutor…"></textarea>
+    </div>
+    <input type="hidden" id="sb-edit-id">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+      <button class="task-action-btn" id="sb-delete-btn" style="display:none;color:var(--red,#f87171);" onclick="deleteScheduleBlock()">Eliminar</button>
+      <button class="task-action-btn" onclick="closeScheduleBlockModal()">Cancelar</button>
+      <button class="btn btn-primary-sm" onclick="saveScheduleBlock()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AUSENCIA / DÍA LIBRE -->
+<div class="modal-overlay" id="absence-modal" style="display:none;" onclick="closeAbsenceModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:400px;">
+    <div class="modal-title">Solicitar ausencia / día libre</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Desde</label>
+        <input type="date" class="form-input" id="abs-desde">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hasta</label>
+        <input type="date" class="form-input" id="abs-hasta">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tipo</label>
+      <select class="form-input" id="abs-tipo">
+        <option value="justificada">Ausencia justificada</option>
+        <option value="compensacion">Día libre por compensación</option>
+        <option value="libre">Día libre</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Motivo</label>
+      <textarea class="form-input" id="abs-notas" style="min-height:50px;resize:vertical;" placeholder="Descripción…"></textarea>
+    </div>
+    <input type="hidden" id="abs-user-id">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+      <button class="task-action-btn" onclick="closeAbsenceModal()">Cancelar</button>
+      <button class="btn btn-primary-sm" onclick="saveAbsence()">Solicitar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL OBJETIVOS MENSUALES -->
+<div class="modal-overlay" id="goals-modal" style="display:none;" onclick="closeGoalsModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:400px;">
+    <div class="modal-title">Objetivos del mes</div>
+    <div class="modal-sub" id="goals-modal-sub"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Sueldo fijo (S/.)</label>
+        <input type="number" class="form-input" id="goals-fijo" min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Variable máximo (S/.)</label>
+        <input type="number" class="form-input" id="goals-variable" min="0" step="0.01" placeholder="0.00">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Mes</label>
+      <input type="month" class="form-input" id="goals-mes">
+    </div>
+    <input type="hidden" id="goals-user-id">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+      <button class="task-action-btn" onclick="closeGoalsModal()">Cancelar</button>
+      <button class="btn btn-primary-sm" onclick="saveGoals()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL = 'https://xzqiyjczzempnplveeyb.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6cWl5amN6emVtcG5wbHZlZXliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQxNTMsImV4cCI6MjA5NDk1MDE1M30.78nx91F76q8-M7NnS7arg_ueooovE7o63wUWJeK6WbA';
@@ -2140,6 +2367,13 @@ let calNativeEvents = [];
 const HOUR_PX_GLOBAL = 28;
 let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
+
+// ── HORARIOS STATE ──
+let scheduleBlocksData = [];
+let miHorarioOffset = 0;
+let goalsData = [];
+let absencesData = [];
+let hourBankData = [];
 
 // Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
 sb.auth.onAuthStateChange((event, session) => {
@@ -2270,6 +2504,464 @@ async function loadPresenceRequests() {
   }
   const { data } = await query;
   presenceRequestsData = data || [];
+}
+
+  const { data } = await query;
+  presenceRequestsData = data || [];
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SISTEMA DE HORARIOS DE TRABAJO
+// ════════════════════════════════════════════════════════════════════════════
+
+const DAYS_LABELS = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const VENTURE_COLORS = ['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4','#f97316','#84cc16','#ec4899','#14b8a6'];
+
+function getVentureColor(ventureId) {
+  const idx = venturesData.findIndex(v => v.id === ventureId);
+  return VENTURE_COLORS[idx >= 0 ? idx % VENTURE_COLORS.length : 0];
+}
+
+// ── CARGAR HORARIOS (owner/manager) ─────────────────────────────────────────
+async function loadHorarios() {
+  const sel = document.getElementById('horarios-user-select');
+  if (!sel) return;
+  const executors = usersData.filter(u => u.rol === 'executor' || u.rol === 'manager');
+  if (!executors.length) {
+    document.getElementById('horarios-content').innerHTML = `<div class="empty-state"><div class="empty-icon">◎</div><div class="empty-text">No hay ejecutores registrados</div></div>`;
+    return;
+  }
+  const prevVal = sel.value;
+  sel.innerHTML = executors.map(u => `<option value="${u.id}">${escapeHtml(u.nombre)}</option>`).join('');
+  if (prevVal && executors.find(u => u.id === prevVal)) sel.value = prevVal;
+  await refreshScheduleBlocks();
+  renderHorarios();
+}
+
+async function refreshScheduleBlocks() {
+  const sel = document.getElementById('horarios-user-select');
+  if (!sel?.value) return;
+  const { data } = await sb.from('work_schedule_blocks')
+    .select('*, ventures(nombre,emoji)')
+    .eq('user_id', sel.value)
+    .eq('active', true)
+    .order('day_of_week').order('start_time');
+  scheduleBlocksData = data || [];
+}
+
+function renderHorarios() {
+  const container = document.getElementById('horarios-content');
+  if (!container) return;
+  const sel = document.getElementById('horarios-user-select');
+  const userId = sel?.value;
+  if (!userId) return;
+
+  const user = usersData.find(u => u.id === userId);
+  const blocks = scheduleBlocksData;
+
+  // Calcular total horas semanales
+  const totalHours = blocks.reduce((sum, b) => {
+    const [sh, sm] = b.start_time.split(':').map(Number);
+    const [eh, em] = b.end_time.split(':').map(Number);
+    return sum + (eh * 60 + em - sh * 60 - sm) / 60;
+  }, 0);
+
+  // Métricas de rendimiento del ejecutor
+  const userTasks = tasksProgressData.filter(t => {
+    if (!t.titulo) return false;
+    const uNorm = normalizeText(user?.nombre || '').replace(/\s+/g, '');
+    const tags = [...t.titulo.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => normalizeText(m[2]));
+    return tags.some(tag => uNorm === tag || uNorm.startsWith(tag) || tag.startsWith(uNorm));
+  });
+  const totalTasks = userTasks.length;
+  const doneTasks = userTasks.filter(t => t.estado === 'completado').length;
+  const inProgressTasks = userTasks.filter(t => t.estado === 'en_progreso' || t.estado === 'en_curso').length;
+  const completionRate = totalTasks ? Math.round(doneTasks / totalTasks * 100) : 0;
+
+  // Grilla semanal
+  const grid = Array.from({length: 7}, (_, i) => {
+    const day = i + 1;
+    const dayBlocks = blocks.filter(b => b.day_of_week === day);
+    return `
+      <div class="sch-day-col">
+        <div class="sch-day-header">${DAYS_LABELS[day]}</div>
+        <div class="sch-day-body">
+          ${dayBlocks.map(b => {
+            const [sh, sm] = b.start_time.split(':').map(Number);
+            const [eh, em] = b.end_time.split(':').map(Number);
+            const dur = ((eh * 60 + em - sh * 60 - sm) / 60).toFixed(1);
+            const color = b.ventures ? getVentureColor(b.venture_id) : '#888';
+            const tipoBadge = b.tipo !== 'operativo' ? `<span style="font-size:9px;background:rgba(255,255,255,0.2);border-radius:3px;padding:1px 4px;">${b.tipo}</span>` : '';
+            return `
+              <div class="sch-block" style="background:${color}20;border-left:3px solid ${color};" onclick="openScheduleBlockModal(${JSON.stringify(b).replace(/"/g,'&quot;')})">
+                <div style="font-size:11px;font-weight:600;color:${color};">${b.start_time.slice(0,5)} – ${b.end_time.slice(0,5)}</div>
+                <div style="font-size:12px;color:var(--text);margin-top:2px;">${b.ventures ? `${b.ventures.emoji} ${escapeHtml(b.ventures.nombre)}` : 'Sin venture'}</div>
+                <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">${tipoBadge}<span style="font-size:10px;color:var(--text3);">${dur}h</span></div>
+              </div>`;
+          }).join('')}
+          <button class="sch-add-btn" onclick="openScheduleBlockModal(null, ${day}, '${userId}')">+ Bloque</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+      <div class="kpi-card" style="min-width:120px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:22px;">${totalHours.toFixed(0)}<span style="font-size:12px;">h/sem</span></div>
+        <div class="kpi-label">Carga semanal</div>
+      </div>
+      <div class="kpi-card" style="min-width:120px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:22px;">${completionRate}<span style="font-size:12px;">%</span></div>
+        <div class="kpi-label">Tareas completadas</div>
+      </div>
+      <div class="kpi-card" style="min-width:120px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:22px;">${inProgressTasks}</div>
+        <div class="kpi-label">En progreso</div>
+      </div>
+      <div class="kpi-card" style="min-width:120px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:22px;">${doneTasks}/${totalTasks}</div>
+        <div class="kpi-label">Completadas / Total</div>
+      </div>
+      <div style="flex:1;display:flex;gap:8px;justify-content:flex-end;">
+        <button class="task-action-btn" onclick="openAbsenceModal('${userId}')">+ Ausencia</button>
+        <button class="task-action-btn" onclick="openGoalsModal('${userId}')">Objetivos mes</button>
+        <button class="btn btn-primary-sm" onclick="openScheduleBlockModal(null, 1, '${userId}')">+ Bloque</button>
+      </div>
+    </div>
+    <div class="sch-week-grid">${grid}</div>
+    ${absencesData.filter(a => a.user_id === userId).length ? renderAbsencesPanel(userId) : ''}
+  `;
+}
+
+function renderAbsencesPanel(userId) {
+  const abs = absencesData.filter(a => a.user_id === userId);
+  if (!abs.length) return '';
+  return `
+    <div class="panel" style="margin-top:12px;">
+      <div class="panel-header"><div class="panel-title">Ausencias y días libres</div></div>
+      <div class="panel-body">
+        ${abs.map(a => `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span class="status-pill pill-${a.estado}" style="font-size:10px;">${a.estado}</span>
+            <span style="font-size:12px;">${a.fecha_desde} → ${a.fecha_hasta}</span>
+            <span style="font-size:11px;color:var(--text3);">${a.tipo}</span>
+            <span style="font-size:11px;color:var(--text3);flex:1;">${a.notas || ''}</span>
+            ${a.estado === 'pendiente' && currentUserRole === 'owner' ? `<button class="task-action-btn" style="font-size:10px;" onclick="approveAbsence('${a.id}')">Aprobar</button>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ── MODAL BLOQUE ─────────────────────────────────────────────────────────────
+function openScheduleBlockModal(block, defaultDay, defaultUserId) {
+  const modal = document.getElementById('schedule-block-modal');
+  const sel = document.getElementById('sb-venture');
+  sel.innerHTML = '<option value="">— Sin venture —</option>' +
+    venturesData.map(v => `<option value="${v.id}">${escapeHtml(v.emoji || '')} ${escapeHtml(v.nombre)}</option>`).join('');
+  document.getElementById('sb-edit-id').value = '';
+  document.getElementById('sb-delete-btn').style.display = 'none';
+  document.getElementById('sb-modal-title').textContent = 'Nuevo bloque de trabajo';
+  document.getElementById('sb-notas').value = '';
+  document.getElementById('sb-tipo').value = 'operativo';
+  if (block && block.id) {
+    document.getElementById('sb-modal-title').textContent = 'Editar bloque';
+    document.getElementById('sb-edit-id').value = block.id;
+    document.getElementById('sb-delete-btn').style.display = '';
+    document.getElementById('sb-day').value = block.day_of_week;
+    document.getElementById('sb-start').value = block.start_time?.slice(0, 5) || '08:00';
+    document.getElementById('sb-end').value = block.end_time?.slice(0, 5) || '09:30';
+    document.getElementById('sb-venture').value = block.venture_id || '';
+    document.getElementById('sb-tipo').value = block.tipo || 'operativo';
+    document.getElementById('sb-notas').value = block.notas || '';
+    modal._userId = block.user_id;
+  } else {
+    document.getElementById('sb-day').value = defaultDay || 1;
+    document.getElementById('sb-start').value = '08:00';
+    document.getElementById('sb-end').value = '09:30';
+    document.getElementById('sb-venture').value = '';
+    modal._userId = defaultUserId || document.getElementById('horarios-user-select')?.value;
+  }
+  modal.style.display = 'flex';
+}
+
+function closeScheduleBlockModal(e) {
+  if (e && e.target !== document.getElementById('schedule-block-modal')) return;
+  document.getElementById('schedule-block-modal').style.display = 'none';
+}
+
+async function saveScheduleBlock() {
+  const editId = document.getElementById('sb-edit-id').value;
+  const userId = document.getElementById('schedule-block-modal')._userId;
+  const day = parseInt(document.getElementById('sb-day').value, 10);
+  const start = document.getElementById('sb-start').value;
+  const end = document.getElementById('sb-end').value;
+  const venture_id = document.getElementById('sb-venture').value || null;
+  const tipo = document.getElementById('sb-tipo').value;
+  const notas = document.getElementById('sb-notas').value.trim() || null;
+  if (!start || !end || start >= end) { alert('Revisa el horario de inicio y fin'); return; }
+  const payload = { user_id: userId, day_of_week: day, start_time: start, end_time: end, venture_id, tipo, notas, active: true };
+  let error;
+  if (editId) {
+    ({ error } = await sb.from('work_schedule_blocks').update(payload).eq('id', editId));
+  } else {
+    ({ error } = await sb.from('work_schedule_blocks').insert(payload));
+  }
+  if (error) { alert('Error: ' + error.message); return; }
+  document.getElementById('schedule-block-modal').style.display = 'none';
+  await refreshScheduleBlocks();
+  renderHorarios();
+}
+
+async function deleteScheduleBlock() {
+  const editId = document.getElementById('sb-edit-id').value;
+  if (!editId || !confirm('¿Eliminar este bloque?')) return;
+  await sb.from('work_schedule_blocks').update({ active: false }).eq('id', editId);
+  document.getElementById('schedule-block-modal').style.display = 'none';
+  await refreshScheduleBlocks();
+  renderHorarios();
+}
+
+// ── AUSENCIAS ─────────────────────────────────────────────────────────────────
+async function loadAbsences(userId) {
+  const { data } = await sb.from('absences').select('*').eq('user_id', userId).order('fecha_desde', { ascending: false });
+  absencesData = [...(absencesData.filter(a => a.user_id !== userId)), ...(data || [])];
+}
+
+function openAbsenceModal(userId) {
+  const modal = document.getElementById('absence-modal');
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('abs-desde').value = today;
+  document.getElementById('abs-hasta').value = today;
+  document.getElementById('abs-tipo').value = 'justificada';
+  document.getElementById('abs-notas').value = '';
+  document.getElementById('abs-user-id').value = userId;
+  modal.style.display = 'flex';
+}
+
+function closeAbsenceModal(e) {
+  if (e && e.target !== document.getElementById('absence-modal')) return;
+  document.getElementById('absence-modal').style.display = 'none';
+}
+
+async function saveAbsence() {
+  const userId = document.getElementById('abs-user-id').value;
+  const desde = document.getElementById('abs-desde').value;
+  const hasta = document.getElementById('abs-hasta').value;
+  const tipo = document.getElementById('abs-tipo').value;
+  const notas = document.getElementById('abs-notas').value.trim() || null;
+  if (!desde || !hasta || desde > hasta) { alert('Revisa las fechas'); return; }
+  const { error } = await sb.from('absences').insert({ user_id: userId, fecha_desde: desde, fecha_hasta: hasta, tipo, notas, estado: currentUserRole === 'owner' ? 'aprobada' : 'pendiente' });
+  if (error) { alert('Error: ' + error.message); return; }
+  document.getElementById('absence-modal').style.display = 'none';
+  // Reprogramar si es aprobada
+  if (currentUserRole === 'owner') await autoRescheduleAbsence(userId, desde, hasta);
+  await loadAbsences(userId);
+  renderHorarios();
+}
+
+async function approveAbsence(absId) {
+  const abs = absencesData.find(a => a.id === absId);
+  if (!abs) return;
+  await sb.from('absences').update({ estado: 'aprobada' }).eq('id', absId);
+  abs.estado = 'aprobada';
+  await autoRescheduleAbsence(abs.user_id, abs.fecha_desde, abs.fecha_hasta);
+  renderHorarios();
+}
+
+// ── REPROGRAMACIÓN AUTOMÁTICA ─────────────────────────────────────────────────
+async function autoRescheduleAbsence(userId, fechaDesde, fechaHasta) {
+  // Obtener bloques de los días ausentes
+  const fromDate = new Date(fechaDesde + 'T00:00:00');
+  const toDate = new Date(fechaHasta + 'T23:59:59');
+  const absentDayOfWeeks = [];
+  for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
+    let dow = d.getDay(); // 0=dom
+    dow = dow === 0 ? 7 : dow; // convertir a 1=lun..7=dom
+    if (!absentDayOfWeeks.includes(dow)) absentDayOfWeeks.push(dow);
+  }
+  if (!absentDayOfWeeks.length) return;
+  // Los bloques afectados son operativos de esos días
+  const affected = scheduleBlocksData.filter(b => absentDayOfWeeks.includes(b.day_of_week) && b.tipo === 'operativo' && b.user_id === userId);
+  if (!affected.length) return;
+  // Encontrar días disponibles: misma semana → días sin ausencia → siguiente semana
+  const allDays = [1, 2, 3, 4, 5];
+  const availDays = allDays.filter(d => !absentDayOfWeeks.includes(d));
+  // Redistribuir: agregar al final del día disponible siguiente
+  for (let i = 0; i < affected.length; i++) {
+    const block = affected[i];
+    const targetDay = availDays[i % availDays.length] || allDays[0];
+    // Buscar último bloque de ese día para concatenar
+    const dayBlocks = scheduleBlocksData.filter(b => b.day_of_week === targetDay && b.user_id === userId && b.active).sort((a, b) => b.end_time.localeCompare(a.end_time));
+    let newStart = '17:00', newEnd = '18:30';
+    if (dayBlocks.length) {
+      const lastEnd = dayBlocks[0].end_time.slice(0, 5);
+      const [h, m] = lastEnd.split(':').map(Number);
+      if (h < 20) {
+        newStart = lastEnd;
+        const endMin = h * 60 + m + 90;
+        newEnd = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
+      } else {
+        // Siguiente semana — marcar como programado en día siguiente
+        continue;
+      }
+    }
+    await sb.from('work_schedule_blocks').insert({
+      user_id: userId, day_of_week: targetDay, start_time: newStart, end_time: newEnd,
+      venture_id: block.venture_id, tipo: 'programado', active: true,
+      notas: `Reprogramado desde ${DAYS_LABELS[block.day_of_week]} (ausencia ${fechaDesde})`
+    });
+  }
+  await refreshScheduleBlocks();
+}
+
+// ── OBJETIVOS Y COMPENSACIÓN ─────────────────────────────────────────────────
+function openGoalsModal(userId) {
+  const user = usersData.find(u => u.id === userId);
+  document.getElementById('goals-modal-sub').textContent = user ? `Definir objetivos para ${user.nombre}` : '';
+  document.getElementById('goals-user-id').value = userId;
+  const today = new Date();
+  document.getElementById('goals-mes').value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const existing = goalsData.find(g => g.user_id === userId);
+  document.getElementById('goals-fijo').value = existing?.sueldo_fijo || '';
+  document.getElementById('goals-variable').value = existing?.variable_max || '';
+  document.getElementById('goals-modal').style.display = 'flex';
+}
+
+function closeGoalsModal(e) {
+  if (e && e.target !== document.getElementById('goals-modal')) return;
+  document.getElementById('goals-modal').style.display = 'none';
+}
+
+async function saveGoals() {
+  const userId = document.getElementById('goals-user-id').value;
+  const mes = document.getElementById('goals-mes').value + '-01';
+  const fijo = parseFloat(document.getElementById('goals-fijo').value) || 0;
+  const variable = parseFloat(document.getElementById('goals-variable').value) || 0;
+  const { error } = await sb.from('executor_goals').upsert({ user_id: userId, mes, sueldo_fijo: fijo, variable_max: variable }, { onConflict: 'user_id,mes' });
+  if (error) { alert('Error: ' + error.message); return; }
+  document.getElementById('goals-modal').style.display = 'none';
+  const existing = goalsData.findIndex(g => g.user_id === userId);
+  if (existing >= 0) goalsData[existing] = { ...goalsData[existing], sueldo_fijo: fijo, variable_max: variable };
+  else goalsData.push({ user_id: userId, mes, sueldo_fijo: fijo, variable_max: variable });
+  renderHorarios();
+}
+
+// ── MI HORARIO (executor) ─────────────────────────────────────────────────────
+async function loadMiHorario() {
+  if (!currentProfileId) return;
+  const { data: blocks } = await sb.from('work_schedule_blocks')
+    .select('*, ventures(nombre,emoji)')
+    .eq('user_id', currentProfileId)
+    .eq('active', true)
+    .order('day_of_week').order('start_time');
+  scheduleBlocksData = blocks || [];
+  renderMiHorario();
+}
+
+function renderMiHorario() {
+  const container = document.getElementById('mi-horario-content');
+  if (!container) return;
+
+  // Semana actual + offset
+  const now = new Date();
+  const dow = now.getDay();
+  const diffToMon = dow === 0 ? -6 : 1 - dow;
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() + diffToMon + miHorarioOffset * 7);
+  weekStart.setHours(0, 0, 0, 0);
+
+  const days = Array.from({length: 7}, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return d;
+  });
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const hoyBtn = document.getElementById('mi-horario-hoy-btn');
+  if (hoyBtn) hoyBtn.style.display = miHorarioOffset !== 0 ? '' : 'none';
+
+  // Mis tareas de hoy
+  const todayDow = (() => { const d = new Date().getDay(); return d === 0 ? 7 : d; })();
+  const todayBlocks = scheduleBlocksData.filter(b => b.day_of_week === todayDow);
+  const todayVentureIds = new Set(todayBlocks.map(b => b.venture_id).filter(Boolean));
+
+  // Progresos del mes
+  const totalTasks = tasksData.length;
+  const doneTasks = tasksProgressData.filter(t => t.estado === 'completado').length;
+  const allTasks = tasksProgressData.length;
+  const progress = allTasks ? Math.round(doneTasks / allTasks * 100) : 0;
+
+  // Goals del mes
+  const mesKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const goal = goalsData.find(g => g.user_id === currentProfileId && g.mes === mesKey);
+  const variableEarned = goal ? (goal.variable_max * progress / 100).toFixed(2) : null;
+
+  // Grilla semanal
+  const fmt = d => d.toLocaleDateString('es-PE', { day: 'numeric', month: 'short' });
+  const grid = days.map((day, i) => {
+    const dayDow = i + 1;
+    const dayStr = day.toISOString().slice(0, 10);
+    const isToday = dayStr === todayStr;
+    const dayBlocks = scheduleBlocksData.filter(b => b.day_of_week === dayDow);
+    // Tareas de hoy activas (ventures del día)
+    const dayVentureIds = new Set(dayBlocks.map(b => b.venture_id).filter(Boolean));
+    const dayTasks = tasksData.filter(t => t.venture_id && dayVentureIds.has(t.venture_id));
+    return `
+      <div class="sch-day-col ${isToday ? 'sch-day-today' : ''}">
+        <div class="sch-day-header">${DAYS_LABELS[dayDow]}<br><span style="font-size:10px;font-weight:400;">${fmt(day)}</span></div>
+        <div class="sch-day-body">
+          ${dayBlocks.map(b => {
+            const color = b.ventures ? getVentureColor(b.venture_id) : '#888';
+            return `<div class="sch-block" style="background:${color}18;border-left:3px solid ${color};">
+              <div style="font-size:11px;font-weight:600;color:${color};">${b.start_time.slice(0,5)} – ${b.end_time.slice(0,5)}</div>
+              <div style="font-size:12px;color:var(--text);">${b.ventures ? `${b.ventures.emoji} ${escapeHtml(b.ventures.nombre)}` : 'Sin venture'}</div>
+            </div>`;
+          }).join('')}
+          ${isToday && dayTasks.length ? `
+            <div style="margin-top:6px;font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;">Tareas de hoy</div>
+            ${dayTasks.slice(0, 4).map(t => `
+              <div style="display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid var(--border);">
+                <div class="priority-dot p-${t.prioridad}"></div>
+                <span style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(cleanTaskTitle(t.titulo))}</span>
+                <span style="font-size:9px;color:var(--text3);">${t.ventures?.emoji || ''}</span>
+              </div>`).join('')}
+          ` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    ${goal ? `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="kpi-card" style="min-width:130px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:18px;">${progress}<span style="font-size:11px;">%</span></div>
+        <div class="kpi-label">Progreso del mes</div>
+        <div style="height:4px;background:var(--border);border-radius:2px;margin-top:6px;">
+          <div style="height:100%;width:${progress}%;background:var(--gold);border-radius:2px;"></div>
+        </div>
+      </div>
+      <div class="kpi-card" style="min-width:130px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:18px;">S/ ${parseFloat(goal.sueldo_fijo).toFixed(0)}</div>
+        <div class="kpi-label">Sueldo fijo</div>
+      </div>
+      <div class="kpi-card" style="min-width:130px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:18px;color:var(--gold);">S/ ${variableEarned}</div>
+        <div class="kpi-label">Variable ganado</div>
+        <div style="font-size:10px;color:var(--text3);">de S/ ${parseFloat(goal.variable_max).toFixed(0)} máx.</div>
+      </div>
+    </div>` : ''}
+    <div class="sch-week-grid">${grid}</div>
+  `;
+}
+
+async function loadGoals() {
+  if (currentUserRole === 'owner' || currentUserRole === 'manager') {
+    const { data } = await sb.from('executor_goals').select('*');
+    goalsData = data || [];
+  } else if (currentProfileId) {
+    const { data } = await sb.from('executor_goals').select('*').eq('user_id', currentProfileId);
+    goalsData = data || [];
+  }
 }
 
 async function loadCalendario() {
@@ -3142,6 +3834,14 @@ async function loadApp() {
   renderDashboard();
   // Chequear GCal en background para el sidebar
   if (currentUserRole === 'owner') checkGcalConnection();
+  // Cargar datos de horarios y objetivos en background
+  loadGoals();
+  if (currentUserRole === 'executor' && currentProfileId) {
+    sb.from('work_schedule_blocks').select('*, ventures(nombre,emoji)')
+      .eq('user_id', currentProfileId).eq('active', true)
+      .order('day_of_week').order('start_time')
+      .then(({ data }) => { scheduleBlocksData = data || []; renderTareasPage(); });
+  }
 
   // Notificaciones de retorno OAuth
   if (window._gcalJustConnected) {
@@ -3213,9 +3913,9 @@ async function loadRoleAccess(profile) {
 }
 
 function getAllowedPagesByRole() {
-  if (currentUserRole === 'executor') return ['tareas', 'notas'];
-  if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'notas', 'calendario'];
-  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo', 'calendario'];
+  if (currentUserRole === 'executor') return ['tareas', 'notas', 'mi-horario'];
+  if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'notas', 'calendario', 'horarios'];
+  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo', 'calendario', 'horarios'];
 }
 
 function applyRoleVisibility() {
@@ -3919,46 +4619,76 @@ function renderSupervisorTaskActions(task) {
   `;
 }
 
-function renderExecutorCard(task) {
+function renderExecutorCard(task, isActive) {
   const meta = parseTaskMeta(task.titulo || '');
+  const locked = !isActive;
   return `
-    <div class="executor-card">
+    <div class="executor-card ${locked ? 'locked-card' : ''}">
       <div class="task-title">${escapeHtml(meta.cleanTitle || cleanTaskTitle(task.titulo))}</div>
-      <div class="task-meta">
-        <span class="task-state-chip state-${escapeHtml(task.estado || 'pendiente')}">${escapeHtml(getTaskStateLabel(task.estado || 'pendiente'))}</span>
-        <div class="priority-dot p-${task.prioridad}"></div>
-        <span>${escapeHtml((task.prioridad || 'media').toUpperCase())}</span>
+      <div class="task-meta" style="margin-top:4px;">
         ${task.ventures ? `<span class="task-venture-tag">${task.ventures.emoji} ${escapeHtml(task.ventures.nombre)}</span>` : ''}
-        ${task.fecha_limite ? `<span>📅 ${escapeHtml(formatDate(task.fecha_limite))}</span>` : ''}
+        <div class="priority-dot p-${task.prioridad}"></div>
+        ${task.fecha_limite ? `<span style="font-size:10px;color:var(--text3);">📅 ${escapeHtml(formatDate(task.fecha_limite))}</span>` : ''}
       </div>
-      <div class="task-actions">
+      ${!locked ? `<div class="task-actions" style="margin-top:6px;">
         ${task.estado !== 'en_curso' ? `<button type="button" class="task-action-btn" onclick="moveExecutorTask('${task.id}','en_curso')">Iniciar</button>` : ''}
         ${task.estado !== 'bloqueado' ? `<button type="button" class="task-action-btn" onclick="moveExecutorTask('${task.id}','bloqueado')">Bloquear</button>` : ''}
         ${task.estado !== 'pendiente' ? `<button type="button" class="task-action-btn" onclick="moveExecutorTask('${task.id}','pendiente')">Replanificar</button>` : ''}
         ${task.estado !== 'entregado' ? `<button type="button" class="task-action-btn" onclick="moveExecutorTask('${task.id}','entregado')">Entregar</button>` : ''}
-      </div>
-    </div>
-  `;
+      </div>` : `<div style="font-size:10px;color:var(--text3);margin-top:4px;">🔒 Fuera del horario de hoy</div>`}
+    </div>`;
 }
 
 function renderExecutorBoard(el, taskItems) {
+  // Calcular ventures activos hoy
+  const todayDow = (() => { const d = new Date().getDay(); return d === 0 ? 7 : d; })();
+  const todayBlocks = scheduleBlocksData.filter(b => b.day_of_week === todayDow);
+  const todayVentureIds = new Set(todayBlocks.map(b => b.venture_id).filter(Boolean));
+  const hasSchedule = todayBlocks.length > 0;
+
+  const isTaskActiveToday = t => {
+    if (!hasSchedule) return true; // sin horario configurado: todo activo
+    if (t.tipo === 'urgente') return true;
+    return t.venture_id && todayVentureIds.has(t.venture_id);
+  };
+
   const backlog = taskItems.filter(t => ['pendiente', 'bloqueado'].includes(t.estado || 'pendiente'));
   const inProgress = taskItems.filter(t => (t.estado || 'pendiente') === 'en_curso');
   const delivered = taskItems.filter(t => (t.estado || 'pendiente') === 'entregado');
 
+  // Progreso del mes
+  const totalProg = tasksProgressData.length;
+  const doneProg = tasksProgressData.filter(t => t.estado === 'completado').length;
+  const pct = totalProg ? Math.round(doneProg / totalProg * 100) : 0;
+
+  // Ventures de hoy para mostrar en cabecera
+  const todayVentureChips = todayBlocks.map(b => {
+    const color = b.ventures ? getVentureColor(b.venture_id) : '#888';
+    return `<span style="font-size:10px;background:${color}22;border:1px solid ${color};color:${color};border-radius:4px;padding:1px 6px;">${b.ventures?.emoji || ''} ${escapeHtml(b.ventures?.nombre || 'Venture')}</span>`;
+  }).join('');
+
   el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <span class="executor-today-badge">Hoy · ${new Date().toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short'})}</span>
+      ${todayVentureChips}
+      <div style="flex:1;"></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);">
+        <span>Progreso mes: ${pct}%</span>
+        <div class="exec-progress-bar" style="width:80px;"><div class="exec-progress-fill" style="width:${pct}%;"></div></div>
+      </div>
+    </div>
     <div class="executor-board">
       <div class="executor-col">
         <div class="executor-col-head"><span>Por hacer</span><span>${backlog.length}</span></div>
-        <div class="executor-col-body">${backlog.length ? backlog.map(renderExecutorCard).join('') : '<div class="empty-state"><div class="empty-sub">Sin tareas</div></div>'}</div>
+        <div class="executor-col-body">${backlog.length ? backlog.map(t => renderExecutorCard(t, isTaskActiveToday(t))).join('') : '<div class="empty-state"><div class="empty-sub">Sin tareas</div></div>'}</div>
       </div>
       <div class="executor-col">
         <div class="executor-col-head"><span>En curso</span><span>${inProgress.length}</span></div>
-        <div class="executor-col-body">${inProgress.length ? inProgress.map(renderExecutorCard).join('') : '<div class="empty-state"><div class="empty-sub">Sin tareas</div></div>'}</div>
+        <div class="executor-col-body">${inProgress.length ? inProgress.map(t => renderExecutorCard(t, true)).join('') : '<div class="empty-state"><div class="empty-sub">Sin tareas</div></div>'}</div>
       </div>
       <div class="executor-col">
         <div class="executor-col-head"><span>Entregado</span><span>${delivered.length}</span></div>
-        <div class="executor-col-body">${delivered.length ? delivered.map(renderExecutorCard).join('') : '<div class="empty-state"><div class="empty-sub">Sin tareas</div></div>'}</div>
+        <div class="executor-col-body">${delivered.length ? delivered.map(t => renderExecutorCard(t, true)).join('') : '<div class="empty-state"><div class="empty-sub">Sin tareas</div></div>'}</div>
       </div>
     </div>
   `;
@@ -5802,7 +6532,7 @@ function setPage(id) {
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
   const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
-  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',calendario:'Calendario'};
+  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',calendario:'Calendario',horarios:'Horarios','mi-horario':'Mi Horario'};
   if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
   const activePageLabel = document.getElementById('topbar-active-page');
   if (activePageLabel) activePageLabel.textContent = pageNames[id] || 'Panel';
@@ -5814,6 +6544,8 @@ function setPage(id) {
     });
   }
   if (id === 'calendario') loadCalendario();
+  if (id === 'horarios') loadHorarios();
+  if (id === 'mi-horario') loadMiHorario();
 }
 
 // ── UTILS ──
@@ -5845,6 +6577,18 @@ window.closeUserConfigModal = closeUserConfigModal;
 window.saveUserConfig = saveUserConfig;
 window.sendUserPasswordReset = sendUserPasswordReset;
 window.removeTeamUser = removeTeamUser;
+window.openScheduleBlockModal = openScheduleBlockModal;
+window.closeScheduleBlockModal = closeScheduleBlockModal;
+window.saveScheduleBlock = saveScheduleBlock;
+window.deleteScheduleBlock = deleteScheduleBlock;
+window.openAbsenceModal = openAbsenceModal;
+window.closeAbsenceModal = closeAbsenceModal;
+window.saveAbsence = saveAbsence;
+window.approveAbsence = approveAbsence;
+window.openGoalsModal = openGoalsModal;
+window.closeGoalsModal = closeGoalsModal;
+window.saveGoals = saveGoals;
+window.renderHorarios = renderHorarios;
 
 init();
 
