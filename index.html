@@ -2106,6 +2106,7 @@ let presenceDuration = 60;
 let calWeekOffset = 0;
 let calEvents = [];
 let calNativeEvents = [];
+const HOUR_PX_GLOBAL = 44;
 let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -2243,7 +2244,9 @@ async function loadPresenceRequests() {
 async function loadCalendario() {
   const container = document.getElementById('calendario-content');
   if (!container) return;
-  container.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-text">Cargando…</div></div>`;
+  // Render inmediato con datos existentes (puede estar vacío la primera vez)
+  renderCalendario();
+  // Luego cargar datos en paralelo y re-renderizar
   await Promise.all([checkGcalConnection(), loadPresenceRequests(), loadCalNativeEvents()]);
   if (gcalConnected && currentUserRole === 'owner') {
     await loadCalendarioEvents();
@@ -2386,7 +2389,7 @@ async function deleteCalEvent() {
 
 function renderWeekView() {
   const CAL_START = 7, CAL_END = 22;
-  const HOUR_PX = 60, HOURS = CAL_END - CAL_START;
+  const HOUR_PX = HOUR_PX_GLOBAL, HOURS = CAL_END - CAL_START;
   const TOTAL_H = HOURS * HOUR_PX;
   const DAYS_ES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
@@ -2452,7 +2455,7 @@ function renderWeekView() {
         const dur = (new Date(ev.fin)-new Date(ev.inicio))/60000;
         const h = Math.max(20, Math.min(dur*(HOUR_PX/60), TOTAL_H-top));
         const vLabel = ev.venture ? ` · ${escapeHtml(ev.venture.emoji||'')}${escapeHtml(ev.venture.nombre)}` : '';
-        return `<div class="cal-event-block cal-event-native" style="top:${top}px;height:${h}px;z-index:2;" title="${escapeHtml(ev.titulo)}" onclick="event.stopPropagation();openEditEventModal('${ev.id}')">${escapeHtml(ev.titulo)}${vLabel}</div>`;
+        return `<div class="cal-event-block cal-event-native" data-event-id="${ev.id}" style="top:${top}px;height:${h}px;z-index:2;" title="${escapeHtml(ev.titulo)}">${escapeHtml(ev.titulo)}${vLabel}</div>`;
       }).join('');
 
     // GCal overlay
@@ -2475,7 +2478,7 @@ function renderWeekView() {
         return `<div class="cal-event-block ${cls}" style="top:${top}px;height:${h}px;" title="${escapeHtml(r.titulo)}">${r.estado==='aprobado'?'✓':'⏳'} ${escapeHtml(r.titulo)}</div>`;
       }).join('');
 
-    return `<div style="border-left:1px solid var(--border);position:relative;min-height:${TOTAL_H}px;cursor:crosshair;${isToday?'background:rgba(212,175,55,0.025)':''}" onclick="handleCalDayClick(event,'${dayIso}',${CAL_START})" title="Click para crear evento">
+    return `<div style="border-left:1px solid var(--border);position:relative;min-height:${TOTAL_H}px;cursor:crosshair;${isToday?'background:rgba(212,175,55,0.025)':''}" onclick="handleCalColumnClick(event,'${dayIso}',${CAL_START})" title="Click para crear evento">
       ${gridLines}${isToday?nowLine:''}${gcalBlocks}${nativeBlocks}${presBlocks}
     </div>`;
   }).join('');
@@ -2510,6 +2513,28 @@ function renderWeekView() {
         <span style="margin-left:auto;"><span style="display:inline-block;width:16px;height:2px;background:var(--red,#f87171);vertical-align:middle;margin-right:4px;"></span>Ahora</span>
       </div>
     </div>`;
+}
+
+function handleCalColumnClick(e, dayIso, calStart) {
+  // Event delegation: check if clicked on a native event block
+  const block = e.target.closest('[data-event-id]');
+  if (block) {
+    openEditEventModal(block.dataset.eventId);
+    return;
+  }
+  // Ignore clicks on gcal/presence blocks
+  if (e.target.closest('.cal-event-block')) return;
+  // Click on empty area → new event
+  const col = e.currentTarget;
+  const rect = col.getBoundingClientRect();
+  const scrollTop = col.closest('[style*="overflow-y"]')?.scrollTop || 0;
+  const y = e.clientY - rect.top + scrollTop;
+  const totalMinutes = y / (HOUR_PX_GLOBAL / 60) + calStart * 60;
+  const h = Math.floor(totalMinutes / 60);
+  const m = Math.floor((totalMinutes % 60) / 30) * 30;
+  const hh = String(Math.max(calStart, Math.min(21, h))).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  openNewEventModal(`${dayIso}T${hh}:${mm}:00`);
 }
 
 function handleCalDayClick(e, dayIso, calStart) {
