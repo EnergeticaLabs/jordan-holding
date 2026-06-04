@@ -1924,11 +1924,37 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <option value="">— Sin venture —</option>
       </select>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Repetir</label>
+        <select class="form-input" id="cal-ev-recurrencia">
+          <option value="none">No se repite</option>
+          <option value="DAILY">Cada día</option>
+          <option value="WEEKLY">Cada semana</option>
+          <option value="MONTHLY">Cada mes</option>
+          <option value="YEARLY">Cada año</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Recordatorio</label>
+        <select class="form-input" id="cal-ev-recordatorio">
+          <option value="0">Sin recordatorio</option>
+          <option value="5">5 min antes</option>
+          <option value="10">10 min antes</option>
+          <option value="15">15 min antes</option>
+          <option value="30" selected>30 min antes</option>
+          <option value="60">1 hora antes</option>
+          <option value="120">2 horas antes</option>
+          <option value="1440">1 día antes</option>
+        </select>
+      </div>
+    </div>
     <div class="form-group">
       <label class="form-label">Notas</label>
       <textarea class="form-input" id="cal-ev-notas" style="min-height:60px;resize:vertical;" placeholder="Detalles adicionales…"></textarea>
     </div>
     <input type="hidden" id="cal-ev-edit-id">
+    <div id="cal-ev-gcal-hint" style="font-size:11px;color:var(--text3);margin-bottom:6px;display:none;">✓ Se sincronizará con Google Calendar</div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
       <button class="task-action-btn" id="cal-ev-delete-btn" style="display:none;color:var(--red,#f87171);" onclick="deleteCalEvent()">Eliminar</button>
       <button class="task-action-btn" onclick="closeCalEventModal()">Cancelar</button>
@@ -2106,7 +2132,7 @@ let presenceDuration = 60;
 let calWeekOffset = 0;
 let calEvents = [];
 let calNativeEvents = [];
-const HOUR_PX_GLOBAL = 44;
+const HOUR_PX_GLOBAL = 34;
 let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -2308,6 +2334,11 @@ function updateSidebarGcal() {
 }
 
 // ── MODAL NUEVO EVENTO ─────────────────────────────────────────────────
+function _setCalModalGcalHint() {
+  const hint = document.getElementById('cal-ev-gcal-hint');
+  if (hint) hint.style.display = gcalConnected ? '' : 'none';
+}
+
 function openNewEventModal(isoStart) {
   const modal = document.getElementById('cal-event-modal');
   if (!modal) return;
@@ -2316,6 +2347,9 @@ function openNewEventModal(isoStart) {
   document.getElementById('cal-ev-notas').value = '';
   document.getElementById('cal-ev-edit-id').value = '';
   document.getElementById('cal-ev-delete-btn').style.display = 'none';
+  document.getElementById('cal-ev-recurrencia').value = 'none';
+  document.getElementById('cal-ev-recordatorio').value = '30';
+  _setCalModalGcalHint();
   // populate ventures
   const sel = document.getElementById('cal-ev-venture');
   sel.innerHTML = '<option value="">— Sin venture —</option>' +
@@ -2340,6 +2374,12 @@ function openEditEventModal(id) {
   document.getElementById('cal-ev-notas').value = ev.notas || '';
   document.getElementById('cal-ev-edit-id').value = ev.id;
   document.getElementById('cal-ev-delete-btn').style.display = '';
+  // Leer meta de recurrencia/recordatorio desde campo color (JSON)
+  let meta = {};
+  try { if (ev.color) meta = JSON.parse(ev.color); } catch(_){}
+  document.getElementById('cal-ev-recurrencia').value = meta.rec || 'none';
+  document.getElementById('cal-ev-recordatorio').value = String(meta.rem ?? 30);
+  _setCalModalGcalHint();
   const sel = document.getElementById('cal-ev-venture');
   sel.innerHTML = '<option value="">— Sin venture —</option>' +
     venturesData.map(v => `<option value="${v.id}" ${v.id===ev.venture_id?'selected':''}>${escapeHtml(v.emoji||'')} ${escapeHtml(v.nombre)}</option>`).join('');
@@ -2361,18 +2401,55 @@ async function saveCalEvent() {
   const venture_id = document.getElementById('cal-ev-venture').value || null;
   const notas  = document.getElementById('cal-ev-notas').value.trim() || null;
   const editId = document.getElementById('cal-ev-edit-id').value;
+  const rec    = document.getElementById('cal-ev-recurrencia').value;
+  const rem    = parseInt(document.getElementById('cal-ev-recordatorio').value, 10);
   if (!titulo) { alert('Escribe un título'); return; }
   if (!inicio || !fin) { alert('Selecciona inicio y fin'); return; }
   if (new Date(inicio) >= new Date(fin)) { alert('El fin debe ser después del inicio'); return; }
 
-  const payload = { titulo, inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(), venture_id, notas };
-  let error;
+  // Recuperar gcalId existente si es edición
+  let existingMeta = {};
+  if (editId) {
+    const ev = calNativeEvents.find(e => e.id === editId);
+    try { if (ev?.color) existingMeta = JSON.parse(ev.color); } catch(_){}
+  }
+
+  // Guardar en Supabase (color = JSON meta)
+  const meta = { rec, rem, gcalId: existingMeta.gcalId || null };
+  const payload = { titulo, inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(), venture_id, notas, color: JSON.stringify(meta) };
+  let error, savedId = editId;
   if (editId) {
     ({ error } = await sb.from('cal_events').update(payload).eq('id', editId));
   } else {
-    ({ error } = await sb.from('cal_events').insert(payload));
+    const res = await sb.from('cal_events').insert(payload).select('id').single();
+    error = res.error;
+    savedId = res.data?.id;
   }
   if (error) { alert('Error: ' + error.message); return; }
+
+  // Sincronizar con Google Calendar si está conectado
+  if (gcalConnected && savedId) {
+    try {
+      const syncRes = await fetch('/api/calendar/sync-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentProfileId,
+          eventId: savedId,
+          gcalEventId: existingMeta.gcalId || null,
+          titulo, inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(),
+          notas, recurrencia: rec, recordatorio: rem
+        })
+      });
+      const syncData = await syncRes.json();
+      if (syncData.gcalEventId) {
+        // Actualizar gcalId en Supabase
+        const newMeta = { rec, rem, gcalId: syncData.gcalEventId };
+        await sb.from('cal_events').update({ color: JSON.stringify(newMeta) }).eq('id', savedId);
+      }
+    } catch(_) {}
+  }
+
   document.getElementById('cal-event-modal').style.display = 'none';
   await loadCalNativeEvents();
   renderCalendario();
@@ -2381,6 +2458,21 @@ async function saveCalEvent() {
 async function deleteCalEvent() {
   const editId = document.getElementById('cal-ev-edit-id').value;
   if (!editId || !confirm('¿Eliminar este evento?')) return;
+  // Eliminar de Google Calendar si está vinculado
+  if (gcalConnected) {
+    const ev = calNativeEvents.find(e => e.id === editId);
+    let gcalId = null;
+    try { if (ev?.color) gcalId = JSON.parse(ev.color)?.gcalId; } catch(_){}
+    if (gcalId) {
+      try {
+        await fetch('/api/calendar/sync-event', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentProfileId, gcalEventId: gcalId })
+        });
+      } catch(_) {}
+    }
+  }
   await sb.from('cal_events').delete().eq('id', editId);
   document.getElementById('cal-event-modal').style.display = 'none';
   await loadCalNativeEvents();
