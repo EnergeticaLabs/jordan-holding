@@ -2137,7 +2137,7 @@ let presenceDuration = 60;
 let calWeekOffset = 0;
 let calEvents = [];
 let calNativeEvents = [];
-const HOUR_PX_GLOBAL = 34;
+const HOUR_PX_GLOBAL = 28;
 let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -2641,7 +2641,7 @@ async function deleteCalEvent() {
 }
 
 function renderWeekView() {
-  const CAL_START = 7, CAL_END = 22;
+  const CAL_START = 7, CAL_END = 23;
   const HOUR_PX = HOUR_PX_GLOBAL, HOURS = CAL_END - CAL_START;
   const TOTAL_H = HOURS * HOUR_PX;
   const DAYS_ES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -3140,6 +3140,8 @@ async function loadApp() {
   await loadVentures();
   await Promise.all([loadTasks(), loadActivity(), loadUsers()]);
   renderDashboard();
+  // Chequear GCal en background para el sidebar
+  if (currentUserRole === 'owner') checkGcalConnection();
 
   // Notificaciones de retorno OAuth
   if (window._gcalJustConnected) {
