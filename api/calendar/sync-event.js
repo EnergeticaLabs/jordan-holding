@@ -55,7 +55,7 @@ export default async function handler(req) {
   let body;
   try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 }); }
 
-  const { userId, gcalEventId, titulo, inicio, fin, notas, recurrencia, recordatorio } = body;
+  const { userId, gcalEventId, titulo, inicio, fin, notas, recurrencia, recordatorios } = body;
   if (!userId || !titulo || !inicio || !fin) {
     return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
   }
@@ -76,15 +76,15 @@ export default async function handler(req) {
     gcalEvent.recurrence = [`RRULE:FREQ=${recurrencia}`];
   }
 
-  // Recordatorios
-  const remMin = parseInt(recordatorio, 10);
-  if (remMin > 0) {
+  // Recordatorios (array de minutos)
+  const remArray = Array.isArray(recordatorios) ? recordatorios.filter(m => Number.isFinite(m) && m > 0) : [];
+  if (remArray.length > 0) {
     gcalEvent.reminders = {
       useDefault: false,
-      overrides: [
-        { method: 'popup',  minutes: remMin },
-        { method: 'email',  minutes: remMin }
-      ]
+      overrides: remArray.map(min => [
+        { method: 'popup', minutes: min },
+        { method: 'email', minutes: min }
+      ]).flat()
     };
   } else {
     gcalEvent.reminders = { useDefault: false, overrides: [] };

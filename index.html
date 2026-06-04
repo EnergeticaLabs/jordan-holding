@@ -1935,19 +1935,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
           <option value="YEARLY">Cada año</option>
         </select>
       </div>
-      <div class="form-group">
-        <label class="form-label">Recordatorio</label>
-        <select class="form-input" id="cal-ev-recordatorio">
-          <option value="0">Sin recordatorio</option>
-          <option value="5">5 min antes</option>
-          <option value="10">10 min antes</option>
-          <option value="15">15 min antes</option>
-          <option value="30" selected>30 min antes</option>
-          <option value="60">1 hora antes</option>
-          <option value="120">2 horas antes</option>
-          <option value="1440">1 día antes</option>
-        </select>
-      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;">Recordatorios <button type="button" onclick="calAddReminder()" style="background:none;border:none;cursor:pointer;color:var(--gold);font-size:12px;padding:0;">+ Agregar</button></label>
+      <div id="cal-ev-reminders" style="display:flex;flex-direction:column;gap:6px;"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Notas</label>
@@ -2270,14 +2261,14 @@ async function loadPresenceRequests() {
 async function loadCalendario() {
   const container = document.getElementById('calendario-content');
   if (!container) return;
-  // Render inmediato con datos existentes (puede estar vacío la primera vez)
+  // Render inmediato con datos existentes
   renderCalendario();
-  // Luego cargar datos en paralelo y re-renderizar
+  // Cargar datos críticos (native events + presence) sin bloquear UI
   await Promise.all([checkGcalConnection(), loadPresenceRequests(), loadCalNativeEvents()]);
+  renderCalendario();
+  // GCal en background — no bloquea el render
   if (gcalConnected && currentUserRole === 'owner') {
-    await loadCalendarioEvents();
-  } else {
-    renderCalendario();
+    loadCalendarioEvents(); // sin await
   }
 }
 
@@ -2348,7 +2339,7 @@ function openNewEventModal(isoStart) {
   document.getElementById('cal-ev-edit-id').value = '';
   document.getElementById('cal-ev-delete-btn').style.display = 'none';
   document.getElementById('cal-ev-recurrencia').value = 'none';
-  document.getElementById('cal-ev-recordatorio').value = '30';
+  calSetReminders([30]); // recordatorio por defecto: 30 min
   _setCalModalGcalHint();
   // populate ventures
   const sel = document.getElementById('cal-ev-venture');
@@ -2378,7 +2369,9 @@ function openEditEventModal(id) {
   let meta = {};
   try { if (ev.color) meta = JSON.parse(ev.color); } catch(_){}
   document.getElementById('cal-ev-recurrencia').value = meta.rec || 'none';
-  document.getElementById('cal-ev-recordatorio').value = String(meta.rem ?? 30);
+  // Compatibilidad: puede venir como rems[] o rem single
+  const savedRems = meta.rems ? meta.rems : (meta.rem ? [meta.rem] : [30]);
+  calSetReminders(savedRems);
   _setCalModalGcalHint();
   const sel = document.getElementById('cal-ev-venture');
   sel.innerHTML = '<option value="">— Sin venture —</option>' +
@@ -2394,6 +2387,95 @@ function closeCalEventModal(e) {
   document.getElementById('cal-event-modal').style.display = 'none';
 }
 
+// ── RECORDATORIOS MÚLTIPLES ─────────────────────────────────────────────
+const CAL_REM_OPTIONS = [
+  { label: '5 min',    value: 5 },
+  { label: '10 min',   value: 10 },
+  { label: '15 min',   value: 15 },
+  { label: '30 min',   value: 30 },
+  { label: '1 hora',   value: 60 },
+  { label: '2 horas',  value: 120 },
+  { label: '1 día',    value: 1440 },
+  { label: '2 días',   value: 2880 },
+  { label: 'Personalizado', value: -1 },
+];
+
+function _remLabel(min) {
+  const opt = CAL_REM_OPTIONS.find(o => o.value === min);
+  if (opt && opt.value !== -1) return opt.label + ' antes';
+  if (min < 60) return `${min} min antes`;
+  if (min < 1440) return `${min/60 % 1 === 0 ? min/60 : (min/60).toFixed(1)} h antes`;
+  const d = min / 1440;
+  return `${d % 1 === 0 ? d : d.toFixed(1)} día${d!==1?'s':''} antes`;
+}
+
+function _renderReminders() {
+  const container = document.getElementById('cal-ev-reminders');
+  if (!container) return;
+  const rems = calGetReminders();
+  container.innerHTML = rems.map((min, i) => `
+    <div style="display:flex;align-items:center;gap:6px;">
+      <select class="form-input" style="flex:1;font-size:13px;" onchange="_onRemChange(${i}, this.value)">
+        ${CAL_REM_OPTIONS.map(o => `<option value="${o.value}" ${(o.value===min||o.value===-1&&!CAL_REM_OPTIONS.find(x=>x.value===min&&x.value!==-1))?'selected':''}>${o.label}</option>`).join('')}
+      </select>
+      ${(min < 0 || !CAL_REM_OPTIONS.find(o => o.value === min && o.value !== -1)) ? `<input type="number" class="form-input" style="width:80px;font-size:13px;" min="1" max="40320" placeholder="min" value="${min > 0 ? min : ''}" onchange="_onRemCustom(${i}, this.value)">` : ''}
+      <button type="button" onclick="_removeReminder(${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;line-height:1;padding:0 2px;">&#215;</button>
+    </div>
+  `).join('');
+  if (rems.length === 0) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--text3);">Sin recordatorios</div>';
+  }
+}
+
+function calGetReminders() {
+  const container = document.getElementById('cal-ev-reminders');
+  if (!container) return [];
+  return (container._rems || []);
+}
+
+function calSetReminders(arr) {
+  const container = document.getElementById('cal-ev-reminders');
+  if (!container) return;
+  container._rems = arr.filter(v => Number.isFinite(v) && v > 0);
+  _renderReminders();
+}
+
+function calAddReminder() {
+  const container = document.getElementById('cal-ev-reminders');
+  if (!container) return;
+  if (!container._rems) container._rems = [];
+  container._rems = [...container._rems, 30];
+  _renderReminders();
+}
+
+function _removeReminder(i) {
+  const container = document.getElementById('cal-ev-reminders');
+  if (!container) return;
+  container._rems.splice(i, 1);
+  _renderReminders();
+}
+
+function _onRemChange(i, val) {
+  const container = document.getElementById('cal-ev-reminders');
+  if (!container) return;
+  const v = parseInt(val, 10);
+  if (v === -1) {
+    // personalizado: mantener -1 hasta que escriba
+    container._rems[i] = -1;
+  } else {
+    container._rems[i] = v;
+  }
+  _renderReminders();
+}
+
+function _onRemCustom(i, val) {
+  const container = document.getElementById('cal-ev-reminders');
+  if (!container) return;
+  const v = parseInt(val, 10);
+  if (v > 0) container._rems[i] = v;
+  _renderReminders();
+}
+
 async function saveCalEvent() {
   const titulo = document.getElementById('cal-ev-titulo').value.trim();
   const inicio = document.getElementById('cal-ev-inicio').value;
@@ -2402,7 +2484,8 @@ async function saveCalEvent() {
   const notas  = document.getElementById('cal-ev-notas').value.trim() || null;
   const editId = document.getElementById('cal-ev-edit-id').value;
   const rec    = document.getElementById('cal-ev-recurrencia').value;
-  const rem    = parseInt(document.getElementById('cal-ev-recordatorio').value, 10);
+  // Leer múltiples recordatorios
+  const rems = calGetReminders();
   if (!titulo) { alert('Escribe un título'); return; }
   if (!inicio || !fin) { alert('Selecciona inicio y fin'); return; }
   if (new Date(inicio) >= new Date(fin)) { alert('El fin debe ser después del inicio'); return; }
@@ -2415,7 +2498,7 @@ async function saveCalEvent() {
   }
 
   // Guardar en Supabase (color = JSON meta)
-  const meta = { rec, rem, gcalId: existingMeta.gcalId || null };
+  const meta = { rec, rems, gcalId: existingMeta.gcalId || null };
   const payload = { titulo, inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(), venture_id, notas, color: JSON.stringify(meta) };
   let error, savedId = editId;
   if (editId) {
@@ -2427,32 +2510,34 @@ async function saveCalEvent() {
   }
   if (error) { alert('Error: ' + error.message); return; }
 
-  // Sincronizar con Google Calendar si está conectado
-  if (gcalConnected && savedId) {
-    try {
-      const syncRes = await fetch('/api/calendar/sync-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentProfileId,
-          eventId: savedId,
-          gcalEventId: existingMeta.gcalId || null,
-          titulo, inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(),
-          notas, recurrencia: rec, recordatorio: rem
-        })
-      });
-      const syncData = await syncRes.json();
-      if (syncData.gcalEventId) {
-        // Actualizar gcalId en Supabase
-        const newMeta = { rec, rem, gcalId: syncData.gcalEventId };
-        await sb.from('cal_events').update({ color: JSON.stringify(newMeta) }).eq('id', savedId);
-      }
-    } catch(_) {}
-  }
-
+  // Cierre optimista: cerrar modal y mostrar evento inmediatamente
   document.getElementById('cal-event-modal').style.display = 'none';
   await loadCalNativeEvents();
   renderCalendario();
+
+  // Sincronizar con GCal en background (no bloquea UI)
+  if (gcalConnected && savedId) {
+    (async () => {
+      try {
+        const syncRes = await fetch('/api/calendar/sync-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentProfileId,
+            eventId: savedId,
+            gcalEventId: existingMeta.gcalId || null,
+            titulo, inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(),
+            notas, recurrencia: rec, recordatorios: rems
+          })
+        });
+        const syncData = await syncRes.json();
+        if (syncData.gcalEventId) {
+          const newMeta = { rec, rems, gcalId: syncData.gcalEventId };
+          await sb.from('cal_events').update({ color: JSON.stringify(newMeta) }).eq('id', savedId);
+        }
+      } catch(_) {}
+    })();
+  }
 }
 
 async function deleteCalEvent() {
@@ -2645,11 +2730,12 @@ function handleCalDayClick(e, dayIso, calStart) {
 }
 
 async function reloadCalWeek() {
-  const container = document.getElementById('calendario-content');
-  if (container) container.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-text">Cargando…</div></div>`;
+  // Renderizar inmediatamente con datos anteriores mientras se carga
+  renderCalendario();
   await loadCalNativeEvents();
-  if (gcalConnected) await loadCalendarioEvents();
-  else renderCalendario();
+  renderCalendario();
+  // GCal en background
+  if (gcalConnected) loadCalendarioEvents(); // sin await
 }
 
 async function loadAvailableSlots(durationMin) {
