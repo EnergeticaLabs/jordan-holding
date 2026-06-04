@@ -1288,6 +1288,62 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   background: var(--gold-bg);
   color: var(--gold-dim);
 }
+/* ══ WEEK CALENDAR VIEW ══ */
+.cal-week-wrapper {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  background: var(--surface);
+}
+.cal-week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.cal-week-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.cal-day-header {
+  text-align: center;
+  padding: 6px 3px;
+  font-size: 10px;
+  color: var(--text3);
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--surface2);
+  line-height: 1.4;
+}
+.cal-day-header.today { color: var(--gold); font-weight: 700; }
+.cal-event-block {
+  position: absolute;
+  left: 2px; right: 2px;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 9px;
+  line-height: 1.3;
+  overflow: hidden;
+  cursor: default;
+  z-index: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cal-event-gcal {
+  background: rgba(96, 165, 250, 0.15);
+  border-left: 2px solid #60a5fa;
+  color: #93c5fd;
+}
+.cal-event-presence-pending {
+  background: var(--gold-bg);
+  border-left: 2px solid var(--gold-dim);
+  color: var(--gold);
+}
+.cal-event-presence-approved {
+  background: rgba(74,222,128,0.12);
+  border-left: 2px solid var(--green, #4ade80);
+  color: var(--green, #4ade80);
+}
 .ia-suggestions-panel {
   border-top: 1px solid var(--border);
   padding: 14px 16px;
@@ -1961,6 +2017,8 @@ let presenceRequestsData = [];
 let availableSlots = [];
 let selectedSlotIndex = null;
 let presenceDuration = 60;
+let calWeekOffset = 0;
+let calEvents = [];
 let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -2098,7 +2156,130 @@ async function loadCalendario() {
   if (!container) return;
   container.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-text">Cargando…</div></div>`;
   await Promise.all([checkGcalConnection(), loadPresenceRequests()]);
+  if (gcalConnected && currentUserRole === 'owner') {
+    await loadCalendarioEvents();
+  } else {
+    renderCalendario();
+  }
+}
+
+async function loadCalendarioEvents() {
+  calEvents = [];
+  const owner = usersData.find(u => u.rol === 'owner');
+  if (!owner || !gcalConnected) { renderCalendario(); return; }
+  const weekStart = getCalWeekStart();
+  const weekEnd   = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
+  try {
+    const res = await fetch(`/api/calendar/events?user_id=${owner.id}&time_min=${weekStart.toISOString()}&time_max=${weekEnd.toISOString()}`);
+    const data = await res.json();
+    calEvents = data.connected ? (data.events || []) : [];
+  } catch(_) { calEvents = []; }
   renderCalendario();
+}
+
+function getCalWeekStart() {
+  const now = new Date();
+  const dow = now.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  const mon = new Date(now);
+  mon.setDate(now.getDate() + diff + calWeekOffset * 7);
+  mon.setHours(0, 0, 0, 0);
+  return mon;
+}
+
+function renderWeekView() {
+  const CAL_START = 6, CAL_END = 23;
+  const HOUR_PX = 64, HOURS = CAL_END - CAL_START;
+  const TOTAL_H = HOURS * HOUR_PX;
+  const DAYS_ES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+
+  const weekStart = getCalWeekStart();
+  const days = Array.from({length:7}, (_,i) => { const d=new Date(weekStart); d.setDate(d.getDate()+i); return d; });
+  const today = new Date(); today.setHours(0,0,0,0);
+  const fmt = d => d.toLocaleDateString('es-PE',{day:'numeric',month:'short'});
+  const title = `${fmt(days[0])} – ${fmt(days[6])} ${days[6].getFullYear()}`;
+
+  const toPx = iso => {
+    const d = new Date(iso);
+    return (d.getHours()*60 + d.getMinutes() - CAL_START*60) * (HOUR_PX/60);
+  };
+
+  // Time labels
+  const timeLabels = Array.from({length:HOURS+1}, (_,h) => {
+    const hr = CAL_START+h;
+    const lbl = hr<12?`${hr}am`:hr===12?'12pm':`${hr-12}pm`;
+    return `<div style="position:absolute;top:${h*HOUR_PX}px;right:5px;transform:translateY(-50%);font-size:9px;color:var(--text3);white-space:nowrap;">${lbl}</div>`;
+  }).join('');
+
+  // Grid lines
+  const gridLines = Array.from({length:HOURS}, (_,h) => `
+    <div style="position:absolute;top:${h*HOUR_PX}px;left:0;right:0;border-top:1px solid var(--border);opacity:0.4;"></div>
+    <div style="position:absolute;top:${h*HOUR_PX+HOUR_PX/2}px;left:0;right:0;border-top:1px dashed var(--border);opacity:0.18;"></div>
+  `).join('');
+
+  // Now line
+  const now = new Date();
+  const nowY = (now.getHours()*60 + now.getMinutes() - CAL_START*60) * (HOUR_PX/60);
+  const nowLine = (nowY>0 && nowY<TOTAL_H) ? `<div style="position:absolute;top:${nowY}px;left:0;right:0;height:2px;background:var(--red,#f87171);z-index:3;pointer-events:none;"></div>` : '';
+
+  const dayHeaders = days.map((d,i) => {
+    const isToday = d.getTime()===today.getTime();
+    return `<div class="cal-day-header ${isToday?'today':''}">${DAYS_ES[i]}<br><strong>${d.getDate()}</strong></div>`;
+  }).join('');
+
+  const dayCols = days.map((d,i) => {
+    const isToday = d.getTime()===today.getTime();
+    const dayStr = d.toISOString().slice(0,10);
+
+    const gcalBlocks = calEvents
+      .filter(ev => !ev.allDay && ev.start?.slice(0,10)===dayStr)
+      .map(ev => {
+        const top = toPx(ev.start);
+        if (top < -20 || top > TOTAL_H) return '';
+        const dur = (new Date(ev.end)-new Date(ev.start))/60000;
+        const h = Math.max(20, Math.min(dur*(HOUR_PX/60), TOTAL_H-top));
+        return `<div class="cal-event-block cal-event-gcal" style="top:${top}px;height:${h}px;" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>`;
+      }).join('');
+
+    const presBlocks = presenceRequestsData
+      .filter(r => r.fecha_propuesta && new Date(r.fecha_propuesta).toISOString().slice(0,10)===dayStr)
+      .map(r => {
+        const top = toPx(r.fecha_propuesta);
+        if (top < -20 || top > TOTAL_H) return '';
+        const h = Math.max(20, (r.duracion_min||60)*(HOUR_PX/60));
+        const cls = r.estado==='aprobado'?'cal-event-presence-approved':'cal-event-presence-pending';
+        const icon = r.estado==='aprobado'?'✓':'⏳';
+        return `<div class="cal-event-block ${cls}" style="top:${top}px;height:${h}px;" title="${escapeHtml(r.titulo)}">${icon} ${escapeHtml(r.titulo)}</div>`;
+      }).join('');
+
+    return `<div style="border-left:1px solid var(--border);position:relative;min-height:${TOTAL_H}px;${isToday?'background:rgba(212,175,55,0.03)':''}">      ${gridLines}${isToday?nowLine:''}${gcalBlocks}${presBlocks}</div>`;
+  }).join('');
+
+  return `
+    <div class="cal-week-wrapper">
+      <div class="cal-week-nav">
+        <button class="task-action-btn" onclick="calWeekOffset--;loadCalendarioEvents()">&#8249; Anterior</button>
+        <div class="cal-week-title">${title}</div>
+        ${calWeekOffset!==0?`<button class="task-action-btn" onclick="calWeekOffset=0;loadCalendarioEvents()">Hoy</button>`:''}
+        <button class="task-action-btn" onclick="calWeekOffset++;loadCalendarioEvents()">Siguiente &#8250;</button>
+      </div>
+      <div style="display:grid;grid-template-columns:44px repeat(7,1fr)">
+        <div style="background:var(--surface2);border-bottom:1px solid var(--border);"></div>
+        ${dayHeaders}
+      </div>
+      <div style="overflow-y:auto;max-height:480px;">
+        <div style="display:grid;grid-template-columns:44px repeat(7,1fr);">
+          <div style="position:relative;min-height:${TOTAL_H}px;background:var(--surface2);">${timeLabels}</div>
+          ${dayCols}
+        </div>
+      </div>
+      <div style="padding:8px 12px;font-size:9px;color:var(--text3);border-top:1px solid var(--border);display:flex;gap:14px;">
+        <span><span style="display:inline-block;width:8px;height:8px;background:rgba(96,165,250,0.3);border-left:2px solid #60a5fa;margin-right:4px;"></span>Google Calendar</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--gold-bg);border-left:2px solid var(--gold-dim);margin-right:4px;"></span>Solicitud pendiente</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:rgba(74,222,128,0.15);border-left:2px solid var(--green,#4ade80);margin-right:4px;"></span>Aprobado</span>
+        <span style="margin-left:auto;"><span style="display:inline-block;width:16px;height:2px;background:var(--red,#f87171);vertical-align:middle;margin-right:4px;"></span>Ahora</span>
+      </div>
+    </div>`;
 }
 
 async function loadAvailableSlots(durationMin) {
@@ -2203,9 +2384,13 @@ function renderCalendario() {
 
   const isOwner = currentUserRole === 'owner';
   const pending = presenceRequestsData.filter(r => r.estado === 'pendiente');
-  const mine    = presenceRequestsData.filter(r => !isOwner);
 
   let html = '';
+
+  // ── CALENDAR WEEK VIEW (owner) ──────────────────────────────────────
+  if (isOwner) {
+    html += renderWeekView();
+  }
 
   // ── STATUS BAR (owner only) ─────────────────────────────────────────
   if (isOwner) {
@@ -2214,8 +2399,8 @@ function renderCalendario() {
         <div class="gcal-dot ${gcalConnected ? 'connected' : 'disconnected'}"></div>
         <div class="gcal-status-label">
           ${gcalConnected
-            ? 'Google Calendar conectado — los slots reflejan tu disponibilidad real'
-            : 'Google Calendar no conectado — los slots serán solo 8am-8pm sin revisar tus eventos'}
+            ? 'Google Calendar conectado'
+            : 'Google Calendar no conectado'}
         </div>
         ${gcalConnected
           ? `<button class="task-action-btn" onclick="disconnectGoogleCalendar()">Desconectar</button>`
