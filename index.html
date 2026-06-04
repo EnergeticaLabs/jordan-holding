@@ -1220,6 +1220,74 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .team-task-venture {
   font-size:9px; color:var(--text3);
 }
+/* ══ CALENDARIO PAGE ══ */
+.gcal-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 11px;
+}
+.gcal-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.gcal-dot.connected { background: var(--green, #4ade80); }
+.gcal-dot.disconnected { background: var(--text3); }
+.gcal-status-label { flex:1; color:var(--text2); }
+.presence-request-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: var(--surface);
+}
+.presence-request-card.aprobado { border-left: 3px solid var(--green, #4ade80); }
+.presence-request-card.rechazado { opacity: 0.5; }
+.presence-req-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.presence-req-meta { font-size: 10px; color: var(--text3); display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 10px; }
+.presence-req-notas { font-size: 11px; color: var(--text2); font-style: italic; margin-bottom: 10px; }
+.slot-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.slot-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text2);
+  background: var(--surface2);
+}
+.slot-option.selected {
+  border-color: var(--gold-dim);
+  background: var(--gold-bg);
+  color: var(--gold);
+}
+.slot-option input[type=radio] { accent-color: var(--gold); }
+.presence-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 560px) { .presence-form-grid { grid-template-columns: 1fr; } }
+.duration-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.duration-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text3);
+  font-size: 11px;
+  cursor: pointer;
+}
+.duration-btn.active {
+  border-color: var(--gold-dim);
+  background: var(--gold-bg);
+  color: var(--gold-dim);
+}
 .ia-suggestions-panel {
   border-top: 1px solid var(--border);
   padding: 14px 16px;
@@ -1717,18 +1785,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <div class="page-header page-header-title-only">
           <div class="page-header-copy">
             <div class="page-title">Calendario</div>
-            <div class="page-sub">Próximamente &mdash; conecta tu calendario aquí</div>
+            <div class="page-sub" id="cal-subtitle">Gestión de disponibilidad</div>
           </div>
         </div>
-        <div class="panel" style="max-width:700px;">
-          <div class="panel-body" style="display:flex;align-items:center;justify-content:center;min-height:200px;">
-            <div class="empty-state">
-              <div class="empty-icon">▦</div>
-              <div class="empty-text">Calendario no configurado aún</div>
-              <div class="empty-sub">Esta sección se conectará a Google Calendar o similar</div>
-            </div>
-          </div>
-        </div>
+        <div id="calendario-content" style="max-width:700px;"></div>
       </div>
 
     </div><!-- /main -->
@@ -1891,8 +1951,16 @@ let isHydratingInboxFromCloud = false;
 let taskBriefMap = {};
 let activeTaskBriefTaskId = null;
 let selectedVentureId = null;
-let ventureTasksView = 'kanban'; // 'kanban' | 'lista'
+let ventureTasksView = 'kanban';
 let ventureNotesSaveTimers = {};
+// ── CALENDAR STATE ──
+const GOOGLE_CLIENT_ID = '455695750554-hr3omk70665auhhug4i41pt8hqk5cshh.apps.googleusercontent.com';
+const GCAL_REDIRECT_URI = 'https://virtualflow-holding.vercel.app/api/auth/google/callback';
+let gcalConnected = false;
+let presenceRequestsData = [];
+let availableSlots = [];
+let selectedSlotIndex = null;
+let presenceDuration = 60;
 let activeConfigUserId = null;
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -1975,6 +2043,307 @@ function openSidebar() {
     }
     isHorizontalSwipe = false;
   }, { passive: true });
+})();
+
+// ══ GOOGLE CALENDAR ══════════════════════════════════════════════════════
+
+function connectGoogleCalendar() {
+  if (!currentProfileId) return;
+  const scopes = [
+    'https://www.googleapis.com/auth/calendar.readonly',
+    'https://www.googleapis.com/auth/calendar.events'
+  ].join(' ');
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GCAL_REDIRECT_URI,
+    response_type: 'code',
+    scope: scopes,
+    access_type: 'offline',
+    prompt: 'consent',
+    state: String(currentProfileId)
+  });
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
+async function disconnectGoogleCalendar() {
+  if (!confirm('¿Desconectar Google Calendar? Dejarás de ver slots de disponibilidad.')) return;
+  await sb.from('calendar_tokens').delete().eq('user_id', currentProfileId);
+  gcalConnected = false;
+  renderCalendario();
+}
+
+async function checkGcalConnection() {
+  if (currentUserRole !== 'owner') { gcalConnected = false; return; }
+  const { data } = await sb.from('calendar_tokens').select('user_id').eq('user_id', currentProfileId).maybeSingle();
+  gcalConnected = !!data;
+}
+
+async function loadPresenceRequests() {
+  const query = sb.from('presence_requests')
+    .select('*, solicitante:users!solicitante_id(nombre,email), venture:ventures(nombre,emoji)')
+    .order('creado_en', { ascending: false })
+    .limit(50);
+  if (currentUserRole !== 'owner') {
+    query.eq('solicitante_id', currentProfileId);
+  }
+  const { data } = await query;
+  presenceRequestsData = data || [];
+}
+
+async function loadCalendario() {
+  const container = document.getElementById('calendario-content');
+  if (!container) return;
+  container.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-text">Cargando…</div></div>`;
+  await Promise.all([checkGcalConnection(), loadPresenceRequests()]);
+  renderCalendario();
+}
+
+async function loadAvailableSlots(durationMin) {
+  presenceDuration = durationMin;
+  availableSlots = [];
+  selectedSlotIndex = null;
+  renderSlotsSection();
+  const owner = usersData.find(u => u.rol === 'owner');
+  if (!owner) return;
+  try {
+    const res = await fetch(`/api/calendar/availability?owner_id=${owner.id}&duration_min=${durationMin}&days=7`);
+    const data = await res.json();
+    availableSlots = data.connected ? (data.slots || []) : [];
+    if (!data.connected) {
+      const slotsEl = document.getElementById('cal-slots-container');
+      if (slotsEl) slotsEl.innerHTML = `<div class="empty-sub" style="padding:8px 0">El owner aún no tiene Google Calendar conectado.</div>`;
+      return;
+    }
+  } catch (_) {}
+  renderSlotsSection();
+}
+
+function renderSlotsSection() {
+  const el = document.getElementById('cal-slots-container');
+  if (!el) return;
+  if (!availableSlots.length) {
+    el.innerHTML = `<div class="empty-sub" style="padding:6px 0">No hay slots disponibles para la duración seleccionada.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="slot-list">` +
+    availableSlots.slice(0, 12).map((s, i) => `
+      <label class="slot-option ${selectedSlotIndex === i ? 'selected' : ''}">
+        <input type="radio" name="slot" value="${i}" onchange="selectedSlotIndex=${i};document.querySelectorAll('.slot-option').forEach((el,j)=>el.classList.toggle('selected',j===${i}))">
+        ${escapeHtml(s.label)}
+      </label>`).join('') +
+    `</div>`;
+}
+
+async function submitPresenceRequest() {
+  const titulo = document.getElementById('pres-titulo')?.value?.trim();
+  const ventureId = document.getElementById('pres-venture')?.value || null;
+  const notas = document.getElementById('pres-notas')?.value?.trim() || '';
+  if (!titulo) { alert('Escribe un título para la solicitud.'); return; }
+  if (selectedSlotIndex === null) { alert('Selecciona un horario disponible.'); return; }
+  const slot = availableSlots[selectedSlotIndex];
+
+  const { error } = await sb.from('presence_requests').insert({
+    solicitante_id: currentProfileId,
+    titulo,
+    duracion_min: presenceDuration,
+    venture_id: ventureId || null,
+    notas,
+    estado: 'pendiente',
+    fecha_propuesta: slot.start
+  });
+  if (error) { alert('No se pudo enviar: ' + error.message); return; }
+  await logActivity('solicitó presencia del owner');
+  await loadPresenceRequests();
+  renderCalendario();
+}
+
+async function approvePresenceRequest(requestId, slotStart, slotEnd) {
+  const req = presenceRequestsData.find(r => String(r.id) === String(requestId));
+  if (!req) return;
+  const btn = document.getElementById(`approve-btn-${requestId}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Creando…'; }
+  try {
+    const res = await fetch('/api/calendar/create-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request_id: requestId,
+        owner_id: currentProfileId,
+        title: req.titulo,
+        start: slotStart,
+        end: slotEnd,
+        notes: req.notas || '',
+        attendee_email: req.solicitante?.email || null
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Error desconocido');
+    await logActivity('aprobó una solicitud de presencia');
+    await loadPresenceRequests();
+    renderCalendario();
+  } catch (e) {
+    alert('No se pudo crear el evento: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Aprobar'; }
+  }
+}
+
+async function rejectPresenceRequest(requestId) {
+  if (!confirm('¿Rechazar esta solicitud?')) return;
+  await sb.from('presence_requests').update({ estado: 'rechazado' }).eq('id', requestId);
+  await loadPresenceRequests();
+  renderCalendario();
+}
+
+function renderCalendario() {
+  const container = document.getElementById('calendario-content');
+  if (!container) return;
+
+  const isOwner = currentUserRole === 'owner';
+  const pending = presenceRequestsData.filter(r => r.estado === 'pendiente');
+  const mine    = presenceRequestsData.filter(r => !isOwner);
+
+  let html = '';
+
+  // ── STATUS BAR (owner only) ─────────────────────────────────────────
+  if (isOwner) {
+    html += `
+      <div class="gcal-status-bar">
+        <div class="gcal-dot ${gcalConnected ? 'connected' : 'disconnected'}"></div>
+        <div class="gcal-status-label">
+          ${gcalConnected
+            ? 'Google Calendar conectado — los slots reflejan tu disponibilidad real'
+            : 'Google Calendar no conectado — los slots serán solo 8am-8pm sin revisar tus eventos'}
+        </div>
+        ${gcalConnected
+          ? `<button class="task-action-btn" onclick="disconnectGoogleCalendar()">Desconectar</button>`
+          : `<button class="btn btn-primary-sm" onclick="connectGoogleCalendar()">Conectar Google Calendar</button>`}
+      </div>`;
+
+    // ── PENDING REQUESTS for owner ──────────────────────────────────────
+    html += `<div class="panel" style="margin-bottom:16px;">
+      <div class="panel-header">
+        <div class="panel-title">Solicitudes de presencia</div>
+        <div class="empty-sub">${pending.length} pendiente${pending.length !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="panel-body">`;
+
+    if (!presenceRequestsData.length) {
+      html += `<div class="empty-state"><div class="empty-icon">◎</div><div class="empty-text">Sin solicitudes aún</div></div>`;
+    } else {
+      html += presenceRequestsData.map(r => {
+        const durLabel = r.duracion_min >= 60 ? `${r.duracion_min/60}h` : `${r.duracion_min}min`;
+        const ventureLabel = r.venture ? `${r.venture.emoji || ''} ${r.venture.nombre}` : '';
+        const statusColor = { pendiente:'var(--gold)', aprobado:'var(--green,#4ade80)', rechazado:'var(--text3)' }[r.estado] || 'var(--text3)';
+        const slotEnd = r.fecha_propuesta ? new Date(new Date(r.fecha_propuesta).getTime() + r.duracion_min * 60000).toISOString() : null;
+        return `
+          <div class="presence-request-card ${r.estado}">
+            <div class="presence-req-title">${escapeHtml(r.titulo)}</div>
+            <div class="presence-req-meta">
+              <span>👤 ${escapeHtml(r.solicitante?.nombre || 'Desconocido')}</span>
+              <span>⏱ ${durLabel}</span>
+              ${ventureLabel ? `<span>${escapeHtml(ventureLabel)}</span>` : ''}
+              <span style="color:${statusColor}">${r.estado.toUpperCase()}</span>
+              <span>${timeAgo(r.creado_en)}</span>
+            </div>
+            ${r.notas ? `<div class="presence-req-notas">"${escapeHtml(r.notas)}"</div>` : ''}
+            ${r.estado === 'pendiente' && r.fecha_propuesta ? `
+              <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">
+                Slot solicitado: <strong>${new Date(r.fecha_propuesta).toLocaleString('es-PE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</strong>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button id="approve-btn-${r.id}" class="btn btn-primary-sm" onclick="approvePresenceRequest('${r.id}','${r.fecha_propuesta}','${slotEnd}')">✓ Aprobar y agendar</button>
+                <button class="task-action-btn" onclick="rejectPresenceRequest('${r.id}')">✗ Rechazar</button>
+              </div>` : ''}
+            ${r.estado === 'aprobado' && r.fecha_propuesta ? `
+              <div style="font-size:10px;color:var(--green,#4ade80);">
+                ✓ Agendado: ${new Date(r.fecha_propuesta).toLocaleString('es-PE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
+              </div>` : ''}
+          </div>`;
+      }).join('');
+    }
+    html += `</div></div>`;
+  }
+
+  // ── SOLICITAR PRESENCIA (non-owner) ────────────────────────────────────
+  if (!isOwner) {
+    const venOpts = venturesData.map(v => `<option value="${v.id}">${escapeHtml(v.emoji||'')} ${escapeHtml(v.nombre)}</option>`).join('');
+    html += `<div class="panel" style="margin-bottom:16px;">
+      <div class="panel-header"><div class="panel-title">Solicitar presencia del owner</div></div>
+      <div class="panel-body" style="display:flex;flex-direction:column;gap:12px;">
+        <div class="presence-form-grid">
+          <div>
+            <div class="form-label">Título / Motivo</div>
+            <input class="input" id="pres-titulo" placeholder="ej: Firma de escritura en notaría">
+          </div>
+          <div>
+            <div class="form-label">Venture relacionado</div>
+            <select class="input" id="pres-venture">
+              <option value="">— Ninguno —</option>${venOpts}
+            </select>
+          </div>
+        </div>
+        <div>
+          <div class="form-label">Duración</div>
+          <div class="duration-btns">
+            ${[30,60,90,120].map(m => `<button class="duration-btn ${presenceDuration===m?'active':''}" onclick="document.querySelectorAll('.duration-btn').forEach(b=>b.classList.remove('active'));this.classList.add('active');loadAvailableSlots(${m})">${m<60?m+'min':m/60+'h'}</button>`).join('')}
+          </div>
+        </div>
+        <div>
+          <div class="form-label">Notas adicionales</div>
+          <textarea class="input" id="pres-notas" style="min-height:60px;resize:vertical;" placeholder="Dirección, documentos necesarios, etc."></textarea>
+        </div>
+        <div>
+          <div class="form-label" style="margin-bottom:6px;">Horarios disponibles <span class="empty-sub">(cargando…)</span></div>
+          <div id="cal-slots-container"><div class="empty-sub">Selecciona una duración para ver los slots</div></div>
+        </div>
+        <button class="btn btn-primary-sm" onclick="submitPresenceRequest()" style="align-self:flex-start;">Enviar solicitud</button>
+      </div>
+    </div>`;
+
+    // My requests
+    html += `<div class="panel">
+      <div class="panel-header"><div class="panel-title">Mis solicitudes</div></div>
+      <div class="panel-body">`;
+    if (!presenceRequestsData.length) {
+      html += `<div class="empty-sub">Sin solicitudes enviadas</div>`;
+    } else {
+      html += presenceRequestsData.map(r => {
+        const durLabel = r.duracion_min >= 60 ? `${r.duracion_min/60}h` : `${r.duracion_min}min`;
+        const statusColor = { pendiente:'var(--gold)', aprobado:'var(--green,#4ade80)', rechazado:'var(--text3)' }[r.estado] || 'var(--text3)';
+        return `<div class="task-item">
+          <div class="task-content">
+            <div class="task-title">${escapeHtml(r.titulo)}</div>
+            <div class="task-meta">
+              <span style="color:${statusColor}">${r.estado.toUpperCase()}</span>
+              <span>${durLabel}</span>
+              ${r.fecha_propuesta ? `<span>${new Date(r.fecha_propuesta).toLocaleString('es-PE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>` : ''}
+              <span>${timeAgo(r.creado_en)}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+    html += `</div></div>`;
+
+    // Auto-load slots on first render
+    setTimeout(() => loadAvailableSlots(presenceDuration), 100);
+  }
+
+  container.innerHTML = html || `<div class="empty-state"><div class="empty-icon">◦</div><div class="empty-text">Sin contenido</div></div>`;
+}
+
+// ── MANEJAR RETORNO OAUTH ────────────────────────────────────────────────
+(function handleOAuthReturn() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('gcal_connected') === '1') {
+    window.history.replaceState({}, '', window.location.pathname);
+    // Mostrar notificación cuando la app cargue
+    window._gcalJustConnected = true;
+  }
+  if (params.get('gcal_error')) {
+    window.history.replaceState({}, '', window.location.pathname);
+    window._gcalError = params.get('gcal_error');
+  }
 })();
 
 // ── INIT ──
@@ -2063,6 +2432,16 @@ async function loadApp() {
   await loadVentures();
   await Promise.all([loadTasks(), loadActivity(), loadUsers()]);
   renderDashboard();
+
+  // Notificaciones de retorno OAuth
+  if (window._gcalJustConnected) {
+    delete window._gcalJustConnected;
+    setPage('calendario');
+  }
+  if (window._gcalError) {
+    alert('Error al conectar Google Calendar: ' + window._gcalError);
+    delete window._gcalError;
+  }
 }
 
 async function loadUsers() {
@@ -4724,6 +5103,7 @@ function setPage(id) {
       ensureInboxComposerVisible();
     });
   }
+  if (id === 'calendario') loadCalendario();
 }
 
 // ── UTILS ──
