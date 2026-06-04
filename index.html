@@ -2073,9 +2073,12 @@ async function disconnectGoogleCalendar() {
 }
 
 async function checkGcalConnection() {
-  if (currentUserRole !== 'owner') { gcalConnected = false; return; }
-  const { data } = await sb.from('calendar_tokens').select('user_id').eq('user_id', currentProfileId).maybeSingle();
-  gcalConnected = !!data;
+  if (currentUserRole !== 'owner' || !currentProfileId) { gcalConnected = false; return; }
+  try {
+    const res = await fetch(`/api/calendar/status?user_id=${currentProfileId}`);
+    const data = await res.json();
+    gcalConnected = !!data.connected;
+  } catch (_) { gcalConnected = false; }
 }
 
 async function loadPresenceRequests() {

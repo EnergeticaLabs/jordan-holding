@@ -4,32 +4,23 @@ const APP_URL = 'https://virtualflow-holding.vercel.app';
 const REDIRECT_URI = `${APP_URL}/api/auth/google/callback`;
 
 async function upsertToken(supabaseUrl, serviceKey, userId, accessToken, refreshToken, expiresAt) {
-  // Try update first
-  const patchRes = await fetch(`${supabaseUrl}/rest/v1/calendar_tokens?user_id=eq.${userId}`, {
-    method: 'PATCH',
+  // Supabase upsert: POST con Prefer resolution=merge-duplicates
+  await fetch(`${supabaseUrl}/rest/v1/calendar_tokens`, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${serviceKey}`,
       'apikey': serviceKey,
-      'Prefer': 'return=minimal'
+      'Prefer': 'resolution=merge-duplicates,return=minimal'
     },
-    body: JSON.stringify({ access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt, updated_at: new Date().toISOString() })
+    body: JSON.stringify({
+      user_id: userId,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: expiresAt,
+      updated_at: new Date().toISOString()
+    })
   });
-  // If no row was updated, insert
-  if (patchRes.status === 204 || patchRes.status === 200) {
-    const count = patchRes.headers.get('content-range');
-    if (count && count.startsWith('*/0')) {
-      await fetch(`${supabaseUrl}/rest/v1/calendar_tokens`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceKey}`,
-          'apikey': serviceKey
-        },
-        body: JSON.stringify({ user_id: userId, access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt })
-      });
-    }
-  }
 }
 
 export default async function handler(req) {
