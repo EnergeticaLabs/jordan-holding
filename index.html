@@ -323,8 +323,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 
 /* ══ MAIN ══ */
 .main {
-  flex: 1; overflow-y: auto;
+  flex: 1; overflow-y: auto; overflow-x: hidden;
   padding: 24px 28px; background: var(--bg);
+  min-width: 0;
 }
 
 /* ══ PAGE HEADER ══ */
@@ -601,8 +602,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 /* ══ SCHEDULE GRID ══ */
 .sch-week-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(100px, 1fr));
   gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 .sch-day-col {
   background: var(--surface);
@@ -1275,24 +1278,81 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   white-space: nowrap;
 }
 /* ══ TEAM TASKS ══ */
-.team-member-tasks {
-  margin-top: 6px;
-  padding: 0 0 4px 0;
+/* ══ TEAM CARDS ══ */
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 4px 0;
 }
-.team-task-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  font-size: 11px;
-  border-top: 1px solid var(--border);
+.team-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.team-task-check {
-  width:14px; height:14px; flex-shrink:0; cursor:pointer;
+.team-card:hover {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold)22;
 }
-.team-task-title { flex:1; color:var(--text); }
-.team-task-venture {
-  font-size:9px; color:var(--text3);
+.team-card-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--gold)22; color: var(--gold);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; margin-bottom: 10px;
+}
+.team-card-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.team-card-role { font-size: 10px; color: var(--text3); margin-top: 2px; }
+.team-card-stats {
+  display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
+}
+.team-stat {
+  font-size: 10px; color: var(--text2);
+  background: var(--bg2); border-radius: 4px; padding: 2px 6px;
+}
+/* Panel detalle miembro */
+.team-detail-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 200; padding: 0;
+}
+.team-detail-panel {
+  background: var(--surface); border-radius: 16px 16px 0 0;
+  width: 100%; max-width: 700px; max-height: 90vh;
+  overflow-y: auto; padding: 24px;
+  box-shadow: 0 -4px 32px rgba(0,0,0,0.3);
+}
+.team-detail-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+}
+.team-detail-tabs {
+  display: flex; gap: 2px; border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.team-detail-tab {
+  padding: 7px 14px; font-size: 12px; font-weight: 500;
+  background: none; border: none; cursor: pointer;
+  color: var(--text3); border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.team-detail-tab.active {
+  color: var(--gold); border-bottom-color: var(--gold);
+}
+/* Priority color badges */
+.prio-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 600; border-radius: 4px;
+  padding: 2px 6px; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.prio-badge.urgente { background:#ef444420; color:#ef4444; }
+.prio-badge.alta    { background:#f9731620; color:#f97316; }
+.prio-badge.media   { background:#f59e0b20; color:#f59e0b; }
+.prio-badge.baja    { background:#10b98120; color:#10b981; }
+.time-est {
+  font-size: 10px; color: var(--text3);
+  background: var(--bg2); border-radius: 4px; padding: 2px 5px;
 }
 /* ══ CALENDARIO PAGE ══ */
 .gcal-status-bar {
@@ -1765,9 +1825,6 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         </div>
         <div class="sidebar-item" data-page="calendario" onclick="setPage('calendario');closeSidebar()">
           <span class="sidebar-icon">▦</span>Calendario
-        </div>
-        <div class="sidebar-item" data-page="horarios" onclick="setPage('horarios');closeSidebar()">
-          <span class="sidebar-icon">⏱</span>Horarios
         </div>
         <div class="sidebar-item" data-page="mi-horario" onclick="setPage('mi-horario');closeSidebar()">
           <span class="sidebar-icon">⏱</span>Mi Horario
@@ -4615,15 +4672,35 @@ function renderSupervisorTaskActions(task) {
   `;
 }
 
+// Estimación de tiempo de ejecución basada en heurísticas + título
+function estimateTaskTime(task) {
+  const title = (task.titulo || '').toLowerCase();
+  const prioridad = task.prioridad || 'media';
+  // Heurísticas por palabras clave
+  if (/reporte|informe|análisis|analisis|investigar|research/.test(title)) return '2–3h';
+  if (/reunión|reunion|llamada|call|meeting/.test(title)) return '1h';
+  if (/revisar|review|verificar|check/.test(title)) return '30–45min';
+  if (/crear|crear|diseñar|disenar|desarrollar|implementar/.test(title)) return '2–4h';
+  if (/actualizar|update|ajustar|modificar/.test(title)) return '30min–1h';
+  if (/enviar|send|compartir|publicar/.test(title)) return '15–30min';
+  if (/planificar|planear|organizar/.test(title)) return '1–2h';
+  // Fallback por prioridad
+  const byPrio = { urgente: '1–2h', alta: '1.5–3h', media: '2–4h', baja: '30min–1h' };
+  return byPrio[prioridad] || '1–2h';
+}
+
 function renderExecutorCard(task, isActive) {
   const meta = parseTaskMeta(task.titulo || '');
   const locked = !isActive;
+  const timeEst = estimateTaskTime(task);
+  const prio = task.prioridad || 'media';
   return `
     <div class="executor-card ${locked ? 'locked-card' : ''}">
       <div class="task-title">${escapeHtml(meta.cleanTitle || cleanTaskTitle(task.titulo))}</div>
-      <div class="task-meta" style="margin-top:4px;">
+      <div class="task-meta" style="margin-top:5px;gap:5px;">
+        <span class="time-est">⏱ ${timeEst}</span>
+        <span class="prio-badge ${prio}">${prio}</span>
         ${task.ventures ? `<span class="task-venture-tag">${task.ventures.emoji} ${escapeHtml(task.ventures.nombre)}</span>` : ''}
-        <div class="priority-dot p-${task.prioridad}"></div>
         ${task.fecha_limite ? `<span style="font-size:10px;color:var(--text3);">📅 ${escapeHtml(formatDate(task.fecha_limite))}</span>` : ''}
       </div>
       ${!locked ? `<div class="task-actions" style="margin-top:6px;">
@@ -6112,45 +6189,162 @@ function renderTeam() {
     return;
   }
 
-  container.innerHTML = usersData.map(u => {
+  container.innerHTML = `<div class="team-grid">${usersData.map(u => {
+    const initials = (u.nombre||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     const userTasks = tasksProgressData.filter(t => {
       if (!t.titulo) return false;
-      const tags = [...t.titulo.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => normalizeText(m[2]));
-      if (!tags.length) return false;
       const uNorm = normalizeText(u.nombre).replace(/\s+/g,'');
+      const tags = [...t.titulo.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => normalizeText(m[2]));
       return tags.some(tag => uNorm === tag || uNorm.startsWith(tag) || tag.startsWith(uNorm));
-    }).filter(t => t.estado !== 'cancelado').sort((a,b)=>{
-      const PRIO={urgente:0,alta:1,media:2,baja:3};
-      const done=(a.estado==='completado'?1:0)-(b.estado==='completado'?1:0);
-      return done || (PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2);
-    });
-    const taskRows = userTasks.length ? userTasks.map(t => {
-      const v = venturesData.find(v => String(v.id) === String(t.venture_id));
-      const done = t.estado === 'completado';
-      return `<div class="team-task-row">
-        <div class="task-check ${done?'done':''}" style="width:14px;height:14px;font-size:9px;" onclick="toggleTask('${t.id}',this)">${done?'✓':''}</div>
-        <div class="team-task-title" style="${done?'text-decoration:line-through;opacity:.5':''}">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
-        ${v ? `<div class="team-task-venture">${escapeHtml(v.emoji||'')} ${escapeHtml(v.nombre)}</div>` : ''}
-      </div>`;
-    }).join('') : `<div class="team-task-row" style="color:var(--text3);font-size:10px;">Sin tareas asignadas</div>`;
+    }).filter(t => t.estado !== 'cancelado');
+    const done = userTasks.filter(t => t.estado === 'completado').length;
+    const pending = userTasks.filter(t => t.estado !== 'completado').length;
+    const pct = userTasks.length ? Math.round(done / userTasks.length * 100) : 0;
+    const goal = goalsData.find(g => g.user_id === u.id);
     return `
-    <div class="config-user-row">
-      <div class="config-user-main">
-        <div class="config-user-name">${escapeHtml(u.nombre || 'Sin nombre')}</div>
-        <div class="config-user-email">${escapeHtml(u.email || 'Sin correo')}</div>
-        <div class="config-user-meta">
-          <span class="config-role-chip ${escapeHtml(u.rol || 'executor')}">${escapeHtml(u.rol || 'executor')}</span>
-          <span class="empty-sub">ID: ${escapeHtml(String(u.id))}</span>
+      <div class="team-card" onclick="openTeamMemberPanel('${u.id}')">
+        <div class="team-card-avatar">${initials}</div>
+        <div class="team-card-name">${escapeHtml(u.nombre || 'Sin nombre')}</div>
+        <div class="team-card-role">${escapeHtml(u.rol || 'executor')} · ${escapeHtml(u.email || '')}</div>
+        <div class="team-card-stats">
+          <span class="team-stat">${pending} pendientes</span>
+          <span class="team-stat">${pct}% completado</span>
+          ${goal ? `<span class="team-stat" style="color:var(--gold);">S/ ${parseFloat(goal.sueldo_fijo||0).toFixed(0)} fijo</span>` : ''}
+        </div>
+        <div class="exec-progress-bar" style="margin-top:8px;"><div class="exec-progress-fill" style="width:${pct}%;"></div></div>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+function openTeamMemberPanel(userId) {
+  const u = usersData.find(u => u.id === userId);
+  if (!u) return;
+  const initials = (u.nombre||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+
+  // Métricas
+  const userTasks = tasksProgressData.filter(t => {
+    if (!t.titulo) return false;
+    const uNorm = normalizeText(u.nombre).replace(/\s+/g,'');
+    const tags = [...t.titulo.matchAll(/(^|\s)@([a-zA-Z0-9_-]+)/g)].map(m => normalizeText(m[2]));
+    return tags.some(tag => uNorm === tag || uNorm.startsWith(tag) || tag.startsWith(uNorm));
+  }).filter(t => t.estado !== 'cancelado');
+  const done = userTasks.filter(t => t.estado === 'completado').length;
+  const inProg = userTasks.filter(t => ['en_progreso','en_curso'].includes(t.estado)).length;
+  const pending = userTasks.filter(t => t.estado === 'pendiente').length;
+  const pct = userTasks.length ? Math.round(done / userTasks.length * 100) : 0;
+
+  // Goals
+  const now = new Date();
+  const mesKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const goal = goalsData.find(g => g.user_id === userId && g.mes === mesKey);
+  const varEarned = goal ? (goal.variable_max * pct / 100).toFixed(2) : null;
+
+  // Horario
+  const userBlocks = scheduleBlocksData.filter(b => b.user_id === userId);
+  const totalHours = userBlocks.reduce((sum, b) => {
+    const [sh,sm] = b.start_time.split(':').map(Number);
+    const [eh,em] = b.end_time.split(':').map(Number);
+    return sum + (eh*60+em-sh*60-sm)/60;
+  }, 0);
+
+  const scheduleGrid = Array.from({length:7},(_,i)=>{
+    const day = i+1;
+    const blocks = userBlocks.filter(b=>b.day_of_week===day);
+    return `<div style="min-width:0;">
+      <div style="font-size:10px;font-weight:600;color:var(--text3);text-align:center;padding:4px 0;">${DAYS_LABELS[day]}</div>
+      ${blocks.map(b=>{
+        const color = b.ventures ? getVentureColor(b.venture_id) : '#888';
+        return `<div style="background:${color}18;border-left:3px solid ${color};border-radius:4px;padding:4px 6px;margin-bottom:3px;font-size:10px;">
+          <div style="color:${color};font-weight:600;">${b.start_time.slice(0,5)}</div>
+          <div style="color:var(--text2);">${b.ventures?.emoji||''} ${escapeHtml(b.ventures?.nombre||'')}</div>
+        </div>`;
+      }).join('')}
+      ${!blocks.length ? `<div style="font-size:10px;color:var(--border);text-align:center;padding:6px 0;">—</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const html = `
+    <div class="team-detail-overlay" id="team-detail-overlay" onclick="closeTeamMemberPanel(event)">
+      <div class="team-detail-panel" onclick="event.stopPropagation()">
+        <div class="team-detail-header">
+          <div class="team-card-avatar" style="width:48px;height:48px;font-size:18px;">${initials}</div>
+          <div style="flex:1;">
+            <div style="font-size:16px;font-weight:600;">${escapeHtml(u.nombre)}</div>
+            <div style="font-size:11px;color:var(--text3);">${escapeHtml(u.rol)} · ${escapeHtml(u.email||'')}</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openGoalsModal('${userId}')">Objetivos</button>` : ''}
+            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openScheduleBlockModal(null,1,'${userId}')">+ Bloque</button>` : ''}
+            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openAbsenceModal('${userId}')">Ausencia</button>` : ''}
+            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openUserConfigModal('${userId}')">Editar</button>` : ''}
+            <button class="task-action-btn" onclick="closeTeamMemberPanel()">✕</button>
+          </div>
+        </div>
+
+        <!-- Métricas -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+          <div class="kpi-card" style="flex:1;min-width:90px;padding:10px 14px;">
+            <div class="kpi-value" style="font-size:20px;">${pct}<span style="font-size:11px;">%</span></div>
+            <div class="kpi-label">Completado</div>
+            <div class="exec-progress-bar"><div class="exec-progress-fill" style="width:${pct}%;"></div></div>
+          </div>
+          <div class="kpi-card" style="flex:1;min-width:90px;padding:10px 14px;">
+            <div class="kpi-value" style="font-size:20px;">${pending}</div>
+            <div class="kpi-label">Pendientes</div>
+          </div>
+          <div class="kpi-card" style="flex:1;min-width:90px;padding:10px 14px;">
+            <div class="kpi-value" style="font-size:20px;">${inProg}</div>
+            <div class="kpi-label">En progreso</div>
+          </div>
+          <div class="kpi-card" style="flex:1;min-width:90px;padding:10px 14px;">
+            <div class="kpi-value" style="font-size:20px;">${totalHours.toFixed(0)}<span style="font-size:11px;">h</span></div>
+            <div class="kpi-label">Horas/semana</div>
+          </div>
+          ${goal ? `
+          <div class="kpi-card" style="flex:1;min-width:90px;padding:10px 14px;">
+            <div class="kpi-value" style="font-size:18px;">S/ ${parseFloat(goal.sueldo_fijo||0).toFixed(0)}</div>
+            <div class="kpi-label">Sueldo fijo</div>
+          </div>
+          <div class="kpi-card" style="flex:1;min-width:90px;padding:10px 14px;">
+            <div class="kpi-value" style="font-size:18px;color:var(--gold);">S/ ${varEarned}</div>
+            <div class="kpi-label">Variable ganado</div>
+            <div style="font-size:9px;color:var(--text3);">de S/ ${parseFloat(goal.variable_max||0).toFixed(0)}</div>
+          </div>` : ''}
+        </div>
+
+        <!-- Horario semanal -->
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;margin-bottom:8px;">Horario semanal</div>
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-bottom:16px;">${scheduleGrid}</div>
+
+        <!-- Tareas pendientes -->
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;margin-bottom:8px;">Tareas activas (${userTasks.filter(t=>t.estado!=='completado').length})</div>
+        <div style="max-height:200px;overflow-y:auto;">
+          ${userTasks.filter(t=>t.estado!=='completado').map(t=>{
+            const v = venturesData.find(v=>String(v.id)===String(t.venture_id));
+            const prioBadge = `<span class="prio-badge ${t.prioridad||'media'}">${t.prioridad||'media'}</span>`;
+            return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px;">
+              ${prioBadge}
+              <span style="flex:1;">${escapeHtml(cleanTaskTitle(t.titulo))}</span>
+              ${v ? `<span style="font-size:10px;color:var(--text3);">${v.emoji} ${escapeHtml(v.nombre)}</span>` : ''}
+            </div>`;
+          }).join('') || '<div style="color:var(--text3);font-size:11px;padding:8px 0;">Sin tareas activas</div>'}
         </div>
       </div>
-      <div class="config-user-actions">
-        ${currentUserRole === 'owner' ? `<button type="button" class="task-action-btn" onclick="openUserConfigModal('${u.id}')">Editar</button>` : ''}
-        ${currentUserRole === 'owner' && String(u.id) !== String(currentProfileId) ? `<button type="button" class="task-action-btn" onclick="removeTeamUser('${u.id}')">Quitar</button>` : ''}
-      </div>
-    </div>
-    <div class="team-member-tasks">${taskRows}</div>`;
-  }).join('');
+    </div>`;
+
+  // Remover overlay anterior si existe
+  const prev = document.getElementById('team-detail-overlay');
+  if (prev) prev.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
 }
+
+function closeTeamMemberPanel(e) {
+  if (e && e.target !== document.getElementById('team-detail-overlay')) return;
+  const el = document.getElementById('team-detail-overlay');
+  if (el) el.remove();
+}
+window.closeTeamMemberPanel = closeTeamMemberPanel;
+window.openTeamMemberPanel = openTeamMemberPanel;
 
 function openUserConfigModal(userId = null) {
   if (currentUserRole !== 'owner') return;
@@ -6542,6 +6736,14 @@ function setPage(id) {
   if (id === 'calendario') loadCalendario();
   if (id === 'horarios') loadHorarios();
   if (id === 'mi-horario') loadMiHorario();
+  if (id === 'equipo') {
+    // Precargar bloques y objetivos para el panel de detalle
+    if (currentUserRole !== 'executor') {
+      sb.from('work_schedule_blocks').select('*, ventures(nombre,emoji)').eq('active',true).order('day_of_week').order('start_time')
+        .then(({data}) => { scheduleBlocksData = data || []; });
+      loadGoals();
+    }
+  }
 }
 
 // ── UTILS ──
