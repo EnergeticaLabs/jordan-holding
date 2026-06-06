@@ -3495,12 +3495,12 @@ function renderWeekView() {
         ${calWeekOffset!==0?`<button class="task-action-btn" onclick="calWeekOffset=0;reloadCalWeek()">Hoy</button>`:''}
         <button class="task-action-btn" onclick="calWeekOffset++;reloadCalWeek()">Siguiente &#8250;</button>
       </div>
-      <div style="display:grid;grid-template-columns:44px repeat(7,1fr);">
-        <div style="background:var(--surface2);border-bottom:1px solid var(--border);"></div>
-        ${dayHeaders}
-      </div>
-      ${alldayRow}
-      <div style="overflow-y:scroll;max-height:520px;">
+      <div style="overflow-y:auto;max-height:600px;">
+        <div style="display:grid;grid-template-columns:44px repeat(7,1fr);position:sticky;top:0;z-index:4;">
+          <div style="background:var(--surface2);border-bottom:1px solid var(--border);"></div>
+          ${dayHeaders}
+        </div>
+        ${alldayRow}
         <div style="display:grid;grid-template-columns:44px repeat(7,1fr);">
           <div style="position:relative;min-height:${TOTAL_H}px;background:var(--surface2);">${timeLabels}</div>
           ${dayCols}
