@@ -1,0 +1,11 @@
+{
+  "name": "jordan-holding",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "remoteUser": "codespace",
+  "features": {},
+  "customizations": {
+    "vscode": {
+      "extensions": []
+    }
+  }
+}
