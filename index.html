@@ -81,7 +81,7 @@
    BASE
 ══════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
+html, body { height: 100%; overflow-x: hidden; }
 body {
   font-family: 'Inter', sans-serif;
   background: var(--bg);
@@ -1430,7 +1430,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .cal-week-wrapper {
   border: 1px solid var(--border);
   border-radius: 8px;
-  overflow: clip;
+  overflow: hidden;
   margin-bottom: 16px;
   background: var(--surface);
 }
@@ -1452,6 +1452,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-left: 1px solid var(--border);
   background: var(--surface2);
   line-height: 1.4;
+  min-width: 0;
+  overflow: hidden;
 }
 .cal-day-header.today { color: var(--gold); font-weight: 700; }
 .cal-event-block {
@@ -1504,6 +1506,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   gap: 2px;
   align-items: center;
   cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
 }
 .cal-allday-cell:hover { background: rgba(212,175,55,0.06); }
 .cal-task-chip {
