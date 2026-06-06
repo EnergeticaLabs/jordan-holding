@@ -1673,10 +1673,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     position: fixed; left: 0; top: 56px; bottom: 0;
     z-index: 40; transform: translateX(-100%);
     box-shadow: var(--shadow-md); width: 240px;
-    flex-shrink: 0;
+    flex-shrink: 0; flex-basis: 0; min-width: 0;
   }
-  .app-body { display: block; }
-  .main { width: 100%; }
   .sidebar.open {
     transform: translateX(0);
     box-shadow: 4px 0 20px rgba(0,0,0,0.15);
