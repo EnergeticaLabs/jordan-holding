@@ -2397,6 +2397,7 @@ let currentTasksQuickFilter = 'all';
 let venturesData = [];
 let tasksData    = [];
 let tasksProgressData = [];
+let notesTodayManualOrder = [];
 let notesTodayData = [];
 let usersData = [];
 let notesPreviewData = [];
@@ -4819,6 +4820,61 @@ function getNotesDraftKey() {
   return `vfh-notes-draft-${currentUser?.id || 'anon'}`;
 }
 
+function getNotesTodayOrderKey() {
+  return `vfh-notes-today-order-${currentUser?.id || 'anon'}`;
+}
+function loadNotesTodayOrder() {
+  try { notesTodayManualOrder = JSON.parse(localStorage.getItem(getNotesTodayOrderKey()) || '[]'); } catch(e) { notesTodayManualOrder = []; }
+}
+function saveNotesTodayOrder() {
+  localStorage.setItem(getNotesTodayOrderKey(), JSON.stringify(notesTodayManualOrder));
+}
+function moveNoteToday(id, dir) {
+  // Construir orden actual si está vacío
+  if (!notesTodayManualOrder.length) {
+    const PRIO_ORDER = { urgente: 0, alta: 1, media: 2, baja: 3 };
+    notesTodayManualOrder = [...notesTodayData].sort((a,b) => {
+      const aDone = a.estado==='completado'?1:0, bDone = b.estado==='completado'?1:0;
+      if (aDone!==bDone) return aDone-bDone;
+      return (PRIO_ORDER[a.prioridad]??2)-(PRIO_ORDER[b.prioridad]??2);
+    }).map(t => t.id);
+  }
+  const idx = notesTodayManualOrder.indexOf(id);
+  if (idx === -1) return;
+  const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= notesTodayManualOrder.length) return;
+  [notesTodayManualOrder[idx], notesTodayManualOrder[swapIdx]] = [notesTodayManualOrder[swapIdx], notesTodayManualOrder[idx]];
+  saveNotesTodayOrder();
+  renderNotesToday();
+}
+
+function getNotesTodayOrderKey() {
+  return `vfh-notes-today-order-${currentUser?.id || 'anon'}`;
+}
+function loadNotesTodayOrder() {
+  try { notesTodayManualOrder = JSON.parse(localStorage.getItem(getNotesTodayOrderKey()) || '[]'); } catch(e) { notesTodayManualOrder = []; }
+}
+function saveNotesTodayOrder() {
+  localStorage.setItem(getNotesTodayOrderKey(), JSON.stringify(notesTodayManualOrder));
+}
+function moveNoteToday(id, dir) {
+  if (!notesTodayManualOrder.length) {
+    const PRIO_ORDER = { urgente: 0, alta: 1, media: 2, baja: 3 };
+    notesTodayManualOrder = [...notesTodayData].sort((a,b) => {
+      const aDone = a.estado==='completado'?1:0, bDone = b.estado==='completado'?1:0;
+      if (aDone!==bDone) return aDone-bDone;
+      return (PRIO_ORDER[a.prioridad]??2)-(PRIO_ORDER[b.prioridad]??2);
+    }).map(t => t.id);
+  }
+  const idx = notesTodayManualOrder.indexOf(id);
+  if (idx === -1) return;
+  const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= notesTodayManualOrder.length) return;
+  [notesTodayManualOrder[idx], notesTodayManualOrder[swapIdx]] = [notesTodayManualOrder[swapIdx], notesTodayManualOrder[idx]];
+  saveNotesTodayOrder();
+  renderNotesToday();
+}
+
 function getNotesLinkMapKey() {
   return `vfh-notes-linkmap-${currentUser?.id || 'anon'}`;
 }
@@ -6048,14 +6104,24 @@ function renderNotesToday() {
     return;
   }
   const PRIO_ORDER = { urgente: 0, alta: 1, media: 2, baja: 3 };
-  const orderedNotesToday = [...notesTodayData].sort((a, b) => {
-    const aDone = a.estado === 'completado' ? 1 : 0;
-    const bDone = b.estado === 'completado' ? 1 : 0;
-    if (aDone !== bDone) return aDone - bDone;
-    const pa = PRIO_ORDER[a.prioridad] ?? 2;
-    const pb = PRIO_ORDER[b.prioridad] ?? 2;
-    return pa - pb;
-  });
+  loadNotesTodayOrder();
+  let orderedNotesToday;
+  if (notesTodayManualOrder.length) {
+    const byId = Object.fromEntries(notesTodayData.map(t => [t.id, t]));
+    orderedNotesToday = notesTodayManualOrder.map(id => byId[id]).filter(Boolean);
+    // añadir los que no estén en el orden manual todavía
+    const inOrder = new Set(notesTodayManualOrder);
+    notesTodayData.filter(t => !inOrder.has(t.id)).forEach(t => orderedNotesToday.push(t));
+  } else {
+    orderedNotesToday = [...notesTodayData].sort((a, b) => {
+      const aDone = a.estado === 'completado' ? 1 : 0;
+      const bDone = b.estado === 'completado' ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      const pa = PRIO_ORDER[a.prioridad] ?? 2;
+      const pb = PRIO_ORDER[b.prioridad] ?? 2;
+      return pa - pb;
+    });
+  }
 
   el.innerHTML = orderedNotesToday.map(t => {
     const meta = parseTaskMeta(t.titulo);
@@ -6081,6 +6147,10 @@ function renderNotesToday() {
     return `
     <div class="task-item">
       <div class="notes-today-item">
+        <div style="display:flex;flex-direction:column;gap:1px;align-self:center;">
+          <button onclick="moveNoteToday('${t.id}','up')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:8px;padding:0;line-height:1;" title="Subir">▲</button>
+          <button onclick="moveNoteToday('${t.id}','down')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:8px;padding:0;line-height:1;" title="Bajar">▼</button>
+        </div>
         <div class="task-check ${t.estado === 'completado' ? 'done' : ''}" onclick="toggleTask('${t.id}',this)">${t.estado === 'completado' ? '✓' : ''}</div>
         <div class="notes-today-main">
           <span class="notes-title-inline ${t.estado === 'completado' ? 'done-text' : ''}">${escapeHtml(meta.cleanTitle)}</span>
