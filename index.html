@@ -2074,6 +2074,17 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 
       <!-- CALENDARIO -->
       <div class="page" id="page-calendario">
+        <div id="cal-debug" style="background:red;color:white;font-size:10px;padding:4px;position:fixed;top:56px;left:0;right:0;z-index:9999;"></div>
+        <script>
+        setTimeout(function(){
+          var m = document.querySelector('.main');
+          var s = document.querySelector('.sidebar');
+          var cs = window.getComputedStyle(m);
+          var ss = window.getComputedStyle(s);
+          document.getElementById('cal-debug').textContent =
+            'main: w='+m.offsetWidth+' left='+m.getBoundingClientRect().left+' ml='+cs.marginLeft+' | sidebar: w='+s.offsetWidth+' disp='+ss.display+' pos='+ss.position;
+        }, 500);
+        </script>
         <div class="page-header">
           <div class="page-header-copy" style="display:block!important;">
             <div class="page-title">Calendario</div>
