@@ -934,7 +934,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .notes-brief-link:hover { color: var(--gold); }
 .notes-today-item {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 56px;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: start;
   width: 100%;
@@ -958,14 +958,13 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   word-break: break-word;
 }
 .notes-priority-col {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text2);
-  white-space: nowrap;
-  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
   align-self: start;
   justify-self: end;
+  flex-shrink: 0;
 }
 .notes-brief-inline {
   margin-top: 4px;
@@ -6089,7 +6088,10 @@ function renderNotesToday() {
           ${entityBadges}
           ${renderTaskBriefInline(t.id)}
         </div>
-        <div class="notes-priority-col">${escapeHtml(t.prioridad || 'media')}</div>
+        <div class="notes-priority-col">
+            <span class="time-est">⏱ ${estimateTaskTime(t)}</span>
+            <span class="prio-badge ${t.prioridad || 'media'}">${t.prioridad || 'media'}</span>
+          </div>
       </div>
     </div>
   `;
