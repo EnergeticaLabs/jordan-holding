@@ -2074,22 +2074,24 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 
       <!-- CALENDARIO -->
       <div class="page" id="page-calendario">
-        <div id="cal-debug" style="background:red;color:white;font-size:10px;padding:4px;position:fixed;top:56px;left:0;right:0;z-index:9999;word-break:break-all;"></div>
+        <div id="cal-debug" style="background:red;color:white;font-size:9px;padding:4px;position:fixed;top:56px;left:0;right:0;z-index:9999;word-break:break-all;line-height:1.6;"></div>
         <script>
         setInterval(function(){
-          var m = document.querySelector('.main');
-          var s = document.querySelector('.sidebar');
           var ab = document.querySelector('.app-body');
-          if(!m||!s||!ab) return;
-          var cs = window.getComputedStyle(m);
-          var ss = window.getComputedStyle(s);
+          if(!ab) return;
           var abs = window.getComputedStyle(ab);
-          var mr = m.getBoundingClientRect();
-          document.getElementById('cal-debug').textContent =
-            'main w='+Math.round(mr.width)+' left='+Math.round(mr.left)+' ml='+cs.marginLeft+
-            ' | sb w='+s.offsetWidth+' disp='+ss.display+' pos='+ss.position+' flex='+ss.flex+
-            ' | ab disp='+abs.display+' w='+Math.round(ab.getBoundingClientRect().width)+
-            ' | vp='+window.innerWidth;
+          var children = Array.from(ab.children).map(function(el){
+            var cs = window.getComputedStyle(el);
+            var r = el.getBoundingClientRect();
+            return (el.className||el.id).toString().substring(0,15)+
+              ' w='+Math.round(r.width)+
+              ' fl='+cs.flex+
+              ' pos='+cs.position+
+              ' disp='+cs.display;
+          });
+          document.getElementById('cal-debug').innerHTML =
+            'vp='+window.innerWidth+' ab='+Math.round(ab.getBoundingClientRect().width)+'<br>'+
+            children.join('<br>');
         }, 1000);
         </script>
         <div class="page-header">
