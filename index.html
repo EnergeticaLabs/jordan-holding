@@ -821,6 +821,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .inbox-schedule-panel {
   display: none; margin-top: 8px; border: 1px solid var(--border2);
   border-radius: 10px; background: var(--surface2); padding: 10px 12px;
+  min-width: 0; overflow: hidden;
 }
 .inbox-schedule-panel.open { display: block; }
 .inbox-schedule-panel-head {
@@ -835,10 +836,14 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .inbox-schedule-panel-close:hover { color: var(--text); }
 .inbox-schedule-slots {
   display: flex; flex-direction: row; gap: 8px;
-  overflow-x: auto; padding-bottom: 4px;
+  overflow-x: auto; overflow-y: hidden; padding-bottom: 6px;
+  -webkit-overflow-scrolling: touch;
 }
+.inbox-schedule-slots::-webkit-scrollbar { height: 4px; }
+.inbox-schedule-slots::-webkit-scrollbar-track { background: transparent; }
+.inbox-schedule-slots::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 .inbox-schedule-day-col {
-  display: flex; flex-direction: column; gap: 4px; min-width: 110px;
+  display: flex; flex-direction: column; gap: 4px; min-width: 100px; flex-shrink: 0;
 }
 .inbox-schedule-day-header {
   font-size: 9px; font-weight: 600; text-transform: uppercase;
