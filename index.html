@@ -2016,8 +2016,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
                 </div>
               <div class="notes-quick">
                   <button id="chip-prioridad" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('prioridad')">Prioridad</button>
-                  <button id="chip-hoy"       type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote('hoy')">Hoy</button>
-                  <button id="chip-manana"    type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote('manana')">Mañana</button>
+                  <button id="chip-agendar"  type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote()">Agendar</button>
                   <button id="chip-delegar"   type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('delegar')">Delegar</button>
                   <button id="chip-entidad"   type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('entidad')">Entidad</button>
                 </div>
@@ -5932,18 +5931,17 @@ function closeSchedulePanel() {
   _scheduleTarget = null;
 }
 
-async function scheduleInboxNote(day) {
-  // Si ya está abierto para el mismo día, lo cierra
-  if (_scheduleTarget === day) { closeSchedulePanel(); return; }
-  _scheduleTarget = day;
-
+async function scheduleInboxNote() {
+  // Toggle: si ya está abierto, lo cierra
   const panel = document.getElementById('inbox-schedule-panel');
+  if (panel && panel.classList.contains('open')) { closeSchedulePanel(); return; }
+  _scheduleTarget = 'open';
+
   const title = document.getElementById('inbox-schedule-panel-title');
   const slots = document.getElementById('inbox-schedule-slots');
   if (!panel || !slots) return;
 
-  const label = day === 'hoy' ? 'Hoy' : 'Mañana';
-  if (title) title.textContent = `Agendar para ${label}`;
+  if (title) title.textContent = 'Agendar en calendario';
   slots.innerHTML = '<span class="inbox-schedule-loading">Buscando huecos disponibles…</span>';
   panel.classList.add('open');
 
@@ -5961,41 +5959,37 @@ async function scheduleInboxNote(day) {
     .replace(/(^|\s)@[^\s]+/g, '').replace(/(^|\s)#[^\s]+/g, '')
     .replace(/\s+/g, ' ').trim() || 'Tarea desde inbox';
 
-  // Buscar owner
-  const owner = usersData.find(u => u.rol === 'owner');
-  if (!owner) {
+  // Resolver owner_id: si el usuario actual es owner usamos su propio ID,
+  // si no, buscamos el owner en usersData
+  let ownerId = null;
+  if (currentUserRole === 'owner' && currentProfileId) {
+    ownerId = currentProfileId;
+  } else {
+    const owner = usersData.find(u => u.rol === 'owner');
+    ownerId = owner?.id || null;
+  }
+  if (!ownerId) {
     slots.innerHTML = '<span class="inbox-schedule-empty">No se encontró el owner para consultar el calendario.</span>';
     return;
   }
 
   try {
-    // days=2 para obtener hoy+mañana; filtramos por fecha
-    const res = await fetch(`/api/calendar/availability?owner_id=${owner.id}&duration_min=60&days=2`);
+    const res = await fetch(`/api/calendar/availability?owner_id=${ownerId}&duration_min=60&days=7`);
     const data = await res.json();
     if (!data.connected) {
       slots.innerHTML = '<span class="inbox-schedule-empty">Google Calendar no está conectado.</span>';
       return;
     }
 
-    // Filtrar slots al día correcto
-    const tz = 'America/Lima';
-    const targetDate = new Date();
-    if (day === 'manana') targetDate.setDate(targetDate.getDate() + 1);
-    const targetStr = targetDate.toLocaleDateString('es-PE', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: tz });
-    // Comparar el inicio del slot con la fecha objetivo
-    const filtered = (data.slots || []).filter(s => {
-      const d = new Date(s.start);
-      return d.toLocaleDateString('es-PE', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: tz }) === targetStr;
-    });
-
-    if (!filtered.length) {
-      slots.innerHTML = `<span class="inbox-schedule-empty">No hay huecos disponibles para ${label.toLowerCase()}.</span>`;
+    const allSlots = data.slots || [];
+    if (!allSlots.length) {
+      slots.innerHTML = '<span class="inbox-schedule-empty">No hay huecos disponibles esta semana.</span>';
       return;
     }
 
-    slots.innerHTML = filtered.map(s =>
+    slots.innerHTML = allSlots.map(s =>
       `<button class="inbox-schedule-slot" onmousedown="event.preventDefault()"
-        onclick="confirmScheduleSlot(${JSON.stringify(s.start)}, ${JSON.stringify(s.end)}, ${JSON.stringify(eventTitle)}, ${JSON.stringify(owner.id)})"
+        onclick="confirmScheduleSlot(${JSON.stringify(s.start)}, ${JSON.stringify(s.end)}, ${JSON.stringify(eventTitle)}, ${JSON.stringify(ownerId)})"
       >${escapeHtml(s.label)}</button>`
     ).join('');
 
@@ -6262,27 +6256,25 @@ function renderNotesToday() {
   }
   const PRIO_ORDER = { urgente: 0, alta: 1, media: 2, baja: 3 };
   loadNotesTodayOrder();
-  let orderedNotesToday;
-  if (notesTodayManualOrder.length) {
-    const byId = Object.fromEntries(notesTodayData.map(t=>[t.id,t]));
-    const full = notesTodayManualOrder.map(id=>byId[id]).filter(Boolean);
-    const inOrder = new Set(notesTodayManualOrder);
-    notesTodayData.filter(t=>!inOrder.has(t.id)).forEach(t=>full.push(t));
-    // Siempre: pendientes primero (orden manual), completados al fondo (orden manual entre ellos)
-    orderedNotesToday = [
-      ...full.filter(t => t.estado !== 'completado'),
-      ...full.filter(t => t.estado === 'completado')
-    ];
-  } else {
-    orderedNotesToday = [...notesTodayData].sort((a, b) => {
-      const aDone = a.estado === 'completado' ? 1 : 0;
-      const bDone = b.estado === 'completado' ? 1 : 0;
-      if (aDone !== bDone) return aDone - bDone;
-      const pa = PRIO_ORDER[a.prioridad] ?? 2;
-      const pb = PRIO_ORDER[b.prioridad] ?? 2;
-      return pa - pb;
-    });
-  }
+  // Manual order como desempate dentro de la misma prioridad
+  const manualPos = {};
+  notesTodayManualOrder.forEach((id, i) => { manualPos[id] = i; });
+  const getPos = id => manualPos[id] ?? 9999;
+
+  const pending = notesTodayData.filter(t => t.estado !== 'completado');
+  const done    = notesTodayData.filter(t => t.estado === 'completado');
+
+  // Pendientes: primero por prioridad, luego por posición manual
+  pending.sort((a, b) => {
+    const pa = PRIO_ORDER[a.prioridad] ?? 4;
+    const pb = PRIO_ORDER[b.prioridad] ?? 4;
+    if (pa !== pb) return pa - pb;
+    return getPos(a.id) - getPos(b.id);
+  });
+  // Completados: solo por posición manual
+  done.sort((a, b) => getPos(a.id) - getPos(b.id));
+
+  const orderedNotesToday = [...pending, ...done];
 
   el.innerHTML = orderedNotesToday.map(t => {
     const meta = parseTaskMeta(t.titulo);
