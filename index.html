@@ -81,7 +81,7 @@
    BASE
 ══════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
+html, body { height: 100%; }
 body {
   font-family: 'Inter', sans-serif;
   background: var(--bg);
@@ -1670,13 +1670,11 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   }
 
   .sidebar {
-    display: none;
     position: fixed; left: 0; top: 56px; bottom: 0;
-    z-index: 40;
+    z-index: 40; transform: translateX(-100%);
     box-shadow: var(--shadow-md); width: 240px;
   }
   .sidebar.open {
-    display: block;
     transform: translateX(0);
     box-shadow: 4px 0 20px rgba(0,0,0,0.15);
   }
