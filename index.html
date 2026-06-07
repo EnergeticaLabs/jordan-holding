@@ -809,6 +809,43 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-color: var(--gold-dim);
   color: var(--gold-dim);
 }
+.quick-chip.chip-urgente.chip-active { background:#ef444420; border-color:#ef4444; color:#ef4444; }
+.quick-chip.chip-alta.chip-active    { background:#f9731620; border-color:#f97316; color:#f97316; }
+.quick-chip.chip-media.chip-active   { background:#eab30820; border-color:#eab308; color:#eab308; }
+.quick-chip.chip-baja.chip-active    { background:#10b98120; border-color:#10b981; color:#10b981; }
+.chip-group-label {
+  font-size: 9px; color: var(--text3); text-transform: uppercase;
+  letter-spacing: .5px; display: flex; align-items: center; gap: 4px;
+  padding: 0 2px;
+}
+.chip-group { display: flex; align-items: center; gap: 4px; }
+.chip-group + .chip-group { padding-left: 8px; border-left: 1px solid var(--border); }
+/* Panel de agenda inline */
+.inbox-schedule-panel {
+  display: none; margin-top: 8px; border: 1px solid var(--border2);
+  border-radius: 10px; background: var(--surface2); padding: 10px 12px;
+}
+.inbox-schedule-panel.open { display: block; }
+.inbox-schedule-panel-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.inbox-schedule-panel-head strong { font-size: 11px; color: var(--text); }
+.inbox-schedule-panel-close {
+  font-size: 14px; background: none; border: none; color: var(--text3);
+  cursor: pointer; line-height: 1; padding: 0 2px;
+}
+.inbox-schedule-panel-close:hover { color: var(--text); }
+.inbox-schedule-slots { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+.inbox-schedule-slot {
+  font-size: 11px; padding: 5px 10px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--surface);
+  cursor: pointer; text-align: left; color: var(--text2);
+  transition: background .15s;
+}
+.inbox-schedule-slot:hover { background: var(--surface3); color: var(--text); border-color: var(--border2); }
+.inbox-schedule-empty { font-size: 11px; color: var(--text3); padding: 4px 0; }
+.inbox-schedule-loading { font-size: 11px; color: var(--text3); padding: 4px 0; }
 .notes-inline-suggestions {
   display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;
 }
@@ -1981,12 +2018,30 @@ select.form-input option { background: var(--surface2); color: var(--text); }
                   <button class="btn btn-secondary" type="button" onclick="addInboxCardFromEntry()">Agregar</button>
                 </div>
               <div class="notes-quick">
-                  <button id="chip-pendiente" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('pendiente')">Pendiente</button>
-                  <button id="chip-hoy" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('hoy')">Hoy</button>
-                  <button id="chip-manana" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('manana')">Mañana</button>
-                  <button id="chip-alta" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('alta')">Prioridad alta</button>
-                  <button id="chip-delegar" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('delegar')">Delegar</button>
-                  <button id="chip-entidad" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('entidad')">Entidad</button>
+                  <div class="chip-group">
+                    <span class="chip-group-label">Prioridad</span>
+                    <button id="chip-urgente" type="button" class="quick-chip chip-urgente" onmousedown="event.preventDefault()" onclick="toggleInboxChip('urgente')">Urgente</button>
+                    <button id="chip-alta"    type="button" class="quick-chip chip-alta"    onmousedown="event.preventDefault()" onclick="toggleInboxChip('alta')">Alta</button>
+                    <button id="chip-media"   type="button" class="quick-chip chip-media"   onmousedown="event.preventDefault()" onclick="toggleInboxChip('media')">Media</button>
+                    <button id="chip-baja"    type="button" class="quick-chip chip-baja"    onmousedown="event.preventDefault()" onclick="toggleInboxChip('baja')">Baja</button>
+                  </div>
+                  <div class="chip-group">
+                    <button id="chip-hoy"    type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote('hoy')">📅 Hoy</button>
+                    <button id="chip-manana" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote('manana')">📅 Mañana</button>
+                  </div>
+                  <div class="chip-group">
+                    <button id="chip-delegar" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('delegar')">Delegar</button>
+                    <button id="chip-entidad" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('entidad')">Entidad</button>
+                  </div>
+                </div>
+                <div id="inbox-schedule-panel" class="inbox-schedule-panel">
+                  <div class="inbox-schedule-panel-head">
+                    <strong id="inbox-schedule-panel-title">Agendar</strong>
+                    <button class="inbox-schedule-panel-close" onmousedown="event.preventDefault()" onclick="closeSchedulePanel()">✕</button>
+                  </div>
+                  <div id="inbox-schedule-slots" class="inbox-schedule-slots">
+                    <span class="inbox-schedule-loading">Buscando huecos disponibles…</span>
+                  </div>
                 </div>
                 <div class="notes-inline-suggestions" id="notes-inline-suggestions"></div>
                 <div class="notes-editor" id="notes-inbox-list"></div>
@@ -5801,20 +5856,20 @@ function updateQuickChipStates() {
   } else {
     text = getInboxLineById(activeInboxLineId)?.text || '';
   }
-  const hasPendiente = /\[\s*\]/.test(text);
-  const hasHoy = /(^|\s)(hoy)(\s|$)/i.test(text);
-  const hasManana = /(^|\s)(mañana|manana)(\s|$)/i.test(text);
-  const hasAlta = /(^|\s)!(urgente|alta)(\s|$)/i.test(text);
+  const hasUrgente = /(^|\s)!urgente(\s|$)/i.test(text);
+  const hasAlta    = /(^|\s)!alta(\s|$)/i.test(text);
+  const hasMedia   = /(^|\s)!media(\s|$)/i.test(text);
+  const hasBaja    = /(^|\s)!baja(\s|$)/i.test(text);
   const hasDelegar = /(^|\s)@[a-zA-Z0-9_-]+/.test(text);
   const hasEntidad = /(^|\s)#[a-zA-Z0-9_-]+/.test(text);
   const toggle = (id, active) => {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('chip-active', active);
   };
-  toggle('chip-pendiente', hasPendiente);
-  toggle('chip-hoy', hasHoy);
-  toggle('chip-manana', hasManana);
-  toggle('chip-alta', hasAlta);
+  toggle('chip-urgente', hasUrgente);
+  toggle('chip-alta',    hasAlta);
+  toggle('chip-media',   hasMedia);
+  toggle('chip-baja',    hasBaja);
   toggle('chip-delegar', hasDelegar);
   toggle('chip-entidad', hasEntidad);
 }
@@ -5859,16 +5914,143 @@ function toggleInboxChip(chip) {
 }
 
 function applyChipToText(chip, text) {
+  const clearPrio = t => t.replace(/(^|\s)!(urgente|alta|media|baja)(\s|$)/gi, ' ').replace(/\s+/g, ' ').trim();
   switch (chip) {
     case 'pendiente': return /\[\s*\]/.test(text) ? text.replace(/\[\s*\]\s*/g, '').trim() : '[] ' + text.trim();
     case 'hoy':       return /(^|\s)hoy(\s|$)/i.test(text)    ? text.replace(/(^|\s)hoy(\s|$)/gi, ' ').trim()               : (text.trim() + ' hoy');
     case 'manana':    return /(^|\s)(mañana|manana)(\s|$)/i.test(text) ? text.replace(/(^|\s)(mañana|manana)(\s|$)/gi, ' ').trim() : (text.trim() + ' manana');
-    case 'alta':      return /(^|\s)!(urgente|alta)(\s|$)/i.test(text) ? text.replace(/(^|\s)!(urgente|alta)(\s|$)/gi, ' ').trim() : (text.trim() + ' !alta');
+    case 'urgente':   return /(^|\s)!urgente(\s|$)/i.test(text) ? clearPrio(text) : (clearPrio(text) + ' !urgente');
+    case 'alta':      return /(^|\s)!alta(\s|$)/i.test(text)    ? clearPrio(text) : (clearPrio(text) + ' !alta');
+    case 'media':     return /(^|\s)!media(\s|$)/i.test(text)   ? clearPrio(text) : (clearPrio(text) + ' !media');
+    case 'baja':      return /(^|\s)!baja(\s|$)/i.test(text)    ? clearPrio(text) : (clearPrio(text) + ' !baja');
     case 'delegar':   return /(^|\s)@/.test(text) ? text : (text.trim() + ' @');
     case 'entidad':   return /(^|\s)#/.test(text) ? text : (text.trim() + ' #');
     default: return text;
   }
 }
+
+// ─── Agenda Inbox en Calendario ────────────────────────────────────────────
+let _scheduleTarget = null; // 'hoy' | 'manana'
+
+function closeSchedulePanel() {
+  const panel = document.getElementById('inbox-schedule-panel');
+  if (panel) panel.classList.remove('open');
+  _scheduleTarget = null;
+}
+
+async function scheduleInboxNote(day) {
+  // Si ya está abierto para el mismo día, lo cierra
+  if (_scheduleTarget === day) { closeSchedulePanel(); return; }
+  _scheduleTarget = day;
+
+  const panel = document.getElementById('inbox-schedule-panel');
+  const title = document.getElementById('inbox-schedule-panel-title');
+  const slots = document.getElementById('inbox-schedule-slots');
+  if (!panel || !slots) return;
+
+  const label = day === 'hoy' ? 'Hoy' : 'Mañana';
+  if (title) title.textContent = `Agendar para ${label}`;
+  slots.innerHTML = '<span class="inbox-schedule-loading">Buscando huecos disponibles…</span>';
+  panel.classList.add('open');
+
+  // Obtener el texto de la nota activa o del input
+  let noteText = '';
+  if (lastInboxFocusSource === 'entry') {
+    noteText = document.getElementById('notes-inbox-entry')?.value?.trim() || '';
+  } else {
+    noteText = getInboxLineById(activeInboxLineId)?.text?.trim() || '';
+  }
+  // Limpiar tokens de syntax del texto para usarlo como título del evento
+  const eventTitle = noteText
+    .replace(/\[\s*\]/g, '').replace(/!(urgente|alta|media|baja)/gi, '')
+    .replace(/(^|\s)(hoy|manana|mañana)(\s|$)/gi, ' ')
+    .replace(/(^|\s)@[^\s]+/g, '').replace(/(^|\s)#[^\s]+/g, '')
+    .replace(/\s+/g, ' ').trim() || 'Tarea desde inbox';
+
+  // Buscar owner
+  const owner = usersData.find(u => u.rol === 'owner');
+  if (!owner) {
+    slots.innerHTML = '<span class="inbox-schedule-empty">No se encontró el owner para consultar el calendario.</span>';
+    return;
+  }
+
+  try {
+    // days=2 para obtener hoy+mañana; filtramos por fecha
+    const res = await fetch(`/api/calendar/availability?owner_id=${owner.id}&duration_min=60&days=2`);
+    const data = await res.json();
+    if (!data.connected) {
+      slots.innerHTML = '<span class="inbox-schedule-empty">Google Calendar no está conectado.</span>';
+      return;
+    }
+
+    // Filtrar slots al día correcto
+    const tz = 'America/Lima';
+    const targetDate = new Date();
+    if (day === 'manana') targetDate.setDate(targetDate.getDate() + 1);
+    const targetStr = targetDate.toLocaleDateString('es-PE', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: tz });
+    // Comparar el inicio del slot con la fecha objetivo
+    const filtered = (data.slots || []).filter(s => {
+      const d = new Date(s.start);
+      return d.toLocaleDateString('es-PE', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: tz }) === targetStr;
+    });
+
+    if (!filtered.length) {
+      slots.innerHTML = `<span class="inbox-schedule-empty">No hay huecos disponibles para ${label.toLowerCase()}.</span>`;
+      return;
+    }
+
+    slots.innerHTML = filtered.map(s =>
+      `<button class="inbox-schedule-slot" onmousedown="event.preventDefault()"
+        onclick="confirmScheduleSlot(${JSON.stringify(s.start)}, ${JSON.stringify(s.end)}, ${JSON.stringify(eventTitle)}, ${JSON.stringify(owner.id)})"
+      >${escapeHtml(s.label)}</button>`
+    ).join('');
+
+  } catch (e) {
+    slots.innerHTML = `<span class="inbox-schedule-empty">Error al obtener disponibilidad.</span>`;
+  }
+}
+
+async function confirmScheduleSlot(start, end, title, ownerId) {
+  const slotsEl = document.getElementById('inbox-schedule-slots');
+  if (slotsEl) slotsEl.innerHTML = '<span class="inbox-schedule-loading">Creando evento…</span>';
+
+  try {
+    const res = await fetch('/api/calendar/create-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner_id: ownerId, title, start, end, notes: 'Agendado desde Inbox libre' })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Error desconocido');
+
+    // Marcar la nota con 📅 y el horario
+    const slotLabel = new Date(start).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' });
+    const dateLabel = new Date(start).toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/Lima' });
+    const calTag = `[📅 ${dateLabel} ${slotLabel}]`;
+
+    if (lastInboxFocusSource === 'entry') {
+      const entry = document.getElementById('notes-inbox-entry');
+      if (entry) { entry.value = (entry.value.trim() + ' ' + calTag).trim(); updateQuickChipStates(); }
+    } else {
+      const line = getInboxLineById(activeInboxLineId);
+      if (line) {
+        line.text = (line.text || '').trim() + ' ' + calTag;
+        saveInboxLines();
+        const ta = document.querySelector(`.notes-line-input[data-line-id="${line.id}"]`);
+        if (ta) { ta.value = line.text; autosizeNoteTextarea(ta); }
+        renderInboxPreview();
+        scheduleSyncLinkedInboxLine(line.id);
+      }
+    }
+
+    if (slotsEl) slotsEl.innerHTML = `<span class="inbox-schedule-empty" style="color:var(--success,#10b981)">✓ Evento creado: ${escapeHtml(slotLabel)} — <a href="${escapeHtml(data.event_link || '#')}" target="_blank" style="color:inherit">ver en Calendar</a></span>`;
+    setTimeout(closeSchedulePanel, 3000);
+
+  } catch (e) {
+    if (slotsEl) slotsEl.innerHTML = `<span class="inbox-schedule-empty">No se pudo crear el evento: ${escapeHtml(e.message)}</span>`;
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function clearInlineSuggestions() {
   const c = document.getElementById('notes-inline-suggestions');
