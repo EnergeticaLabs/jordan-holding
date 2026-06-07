@@ -115,7 +115,7 @@ export default async function handler(req) {
     }
   }
 
-  // Find free slots (Mon-Fri 8am-8pm Lima, advance by 30min)
+  // Find free slots (every day 7am-11pm Lima, advance by 30min)
   const slots = [];
   const dur = durationMin * 60000;
   const minStart = Date.now() + 3600000; // at least 1h from now
@@ -123,11 +123,9 @@ export default async function handler(req) {
   for (let d = 0; d < days; d++) {
     const day = new Date(timeMin);
     day.setDate(day.getDate() + d);
-    const dow = day.getDay();
-    if (dow === 0 || dow === 6) continue;
 
-    const dayStart = new Date(day); dayStart.setHours(8, 0, 0, 0);
-    const dayEnd   = new Date(day); dayEnd.setHours(20, 0, 0, 0);
+    const dayStart = new Date(day); dayStart.setHours(7, 0, 0, 0);
+    const dayEnd   = new Date(day); dayEnd.setHours(23, 0, 0, 0);
     let t = Math.max(dayStart.getTime(), minStart);
 
     while (t + dur <= dayEnd.getTime()) {
