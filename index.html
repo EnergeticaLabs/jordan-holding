@@ -6000,18 +6000,6 @@ async function scheduleInboxNote() {
 
     const allSlots = data.slots || [];
 
-    // — DEBUG VISUAL —
-    const dbg = data.debug || {};
-    const debugHtml = `<details style="font-size:9px;color:var(--text3);margin-bottom:8px;grid-column:1/-1">
-      <summary style="cursor:pointer;font-weight:600;color:var(--text2)">🔍 Debug timezone</summary>
-      <pre style="margin:4px 0;white-space:pre-wrap;word-break:break-all;line-height:1.5">${escapeHtml(JSON.stringify(dbg, null, 2))}</pre>
-    </details>`;
-
-    if (!allSlots.length) {
-      slots.innerHTML = debugHtml + '<span class="inbox-schedule-empty">No hay huecos disponibles esta semana.</span>';
-      return;
-    }
-
     // Agrupar por día
     const dayMap = {};
     for (const s of allSlots) {
@@ -6019,13 +6007,13 @@ async function scheduleInboxNote() {
       if (!dayMap[key]) dayMap[key] = { header: s.dayLabel || key, slots: [] };
       dayMap[key].slots.push(s);
     }
-    slots.innerHTML = debugHtml + Object.values(dayMap).map(day =>
+    slots.innerHTML = Object.values(dayMap).map(day =>
       `<div class="inbox-schedule-day-col">
         <div class="inbox-schedule-day-header">${escapeHtml(day.header)}</div>
         <div class="inbox-schedule-day-slots">${
           day.slots.map(s =>
             `<button class="inbox-schedule-slot" onmousedown="event.preventDefault()"
-              onclick="confirmScheduleSlot(${JSON.stringify(s.start)}, ${JSON.stringify(s.end)}, ${JSON.stringify(eventTitle)}, ${JSON.stringify(ownerId)})"
+              onclick='confirmScheduleSlot(${JSON.stringify(s.start)}, ${JSON.stringify(s.end)}, ${JSON.stringify(eventTitle)}, ${JSON.stringify(ownerId)})'
             >${escapeHtml(s.label)}</button>`
           ).join('')
         }</div>
@@ -6071,6 +6059,12 @@ async function confirmScheduleSlot(start, end, title, ownerId) {
     }
 
     if (slotsEl) slotsEl.innerHTML = `<span class="inbox-schedule-empty" style="color:var(--success,#10b981)">✓ Evento creado: ${escapeHtml(slotLabel)} — <a href="${escapeHtml(data.event_link || '#')}" target="_blank" style="color:inherit">ver en Calendar</a></span>`;
+
+    // Invalidar caché del calendario y recargar
+    const weekKey = new Date(start).toISOString().slice(0, 10);
+    Object.keys(localStorage).filter(k => k.startsWith('vfh-gcal-')).forEach(k => localStorage.removeItem(k));
+    if (typeof loadCalendarioEvents === 'function') loadCalendarioEvents();
+
     setTimeout(closeSchedulePanel, 3000);
 
   } catch (e) {

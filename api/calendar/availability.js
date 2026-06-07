@@ -151,23 +151,7 @@ export default async function handler(req) {
     }
   }
 
-  // Debug info for timezone diagnosis
-  const dayMidnightUtc0 = todayLimaMs;
-  const debug = {
-    serverNowUTC: new Date().toISOString(),
-    nowUtcMs: nowUtc,
-    LIMA_OFFSET_MS,
-    todayLimaMs,
-    day0_midnightUtc: new Date(dayMidnightUtc0).toISOString(),
-    day0_startUTC: new Date(dayMidnightUtc0 + SLOT_START_H * 3600000).toISOString(),
-    day0_endUTC:   new Date(dayMidnightUtc0 + SLOT_END_H   * 3600000).toISOString(),
-    day0_startLima: new Date(dayMidnightUtc0 + SLOT_START_H * 3600000).toLocaleTimeString('es-PE', { timeZone: tz, hour: '2-digit', minute: '2-digit' }),
-    day0_endLima:   new Date(dayMidnightUtc0 + SLOT_END_H   * 3600000).toLocaleTimeString('es-PE', { timeZone: tz, hour: '2-digit', minute: '2-digit' }),
-    firstSlot: slots[0] || null,
-    totalSlots: slots.length,
-  };
-
-  return new Response(JSON.stringify({ connected: true, slots, debug }), {
+  return new Response(JSON.stringify({ connected: true, slots }), {
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
   });
 }
