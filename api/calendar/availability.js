@@ -117,19 +117,19 @@ export default async function handler(req) {
     }
   }
 
-  // Find free slots (every day 7am-11pm Lima, advance by 30min)
-  // Lima = UTC-5: 7am Lima = 12:00 UTC, 11pm Lima = 04:00 UTC next day
-  const SLOT_START_H = 7;   // 7am Lima
-  const SLOT_END_H   = 23;  // 11pm Lima
+  // Find free slots every day 7am-11pm Lima, advance by 30min.
+  // dayMidnightUtc = midnight Lima expressed in UTC ms (e.g. 05:00 UTC for Lima UTC-5).
+  // To get 7am Lima: add 7h to that; to get 11pm Lima: add 23h.
+  const SLOT_START_H = 7;
+  const SLOT_END_H   = 23;
   const slots = [];
   const dur = durationMin * 60000;
   const minStart = Date.now() + 3600000; // at least 1h from now
 
   for (let d = 0; d < days; d++) {
-    const dayMidnightUtc = todayLimaMs + d * 86400000; // midnight Lima in UTC ms
-    // 7am Lima = midnight Lima UTC + 7h + 5h (Lima offset) = +12h UTC
-    const dayStart = dayMidnightUtc + (SLOT_START_H - LIMA_OFFSET_MS / 3600000) * 3600000;
-    const dayEnd   = dayMidnightUtc + (SLOT_END_H   - LIMA_OFFSET_MS / 3600000) * 3600000;
+    const dayMidnightUtc = todayLimaMs + d * 86400000;
+    const dayStart = dayMidnightUtc + SLOT_START_H * 3600000;
+    const dayEnd   = dayMidnightUtc + SLOT_END_H   * 3600000;
     let t = Math.max(dayStart, minStart);
 
     while (t + dur <= dayEnd) {
