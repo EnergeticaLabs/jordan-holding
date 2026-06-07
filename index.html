@@ -833,11 +833,23 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   cursor: pointer; line-height: 1; padding: 0 2px;
 }
 .inbox-schedule-panel-close:hover { color: var(--text); }
-.inbox-schedule-slots { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+.inbox-schedule-slots {
+  display: flex; flex-direction: row; gap: 8px;
+  overflow-x: auto; padding-bottom: 4px;
+}
+.inbox-schedule-day-col {
+  display: flex; flex-direction: column; gap: 4px; min-width: 110px;
+}
+.inbox-schedule-day-header {
+  font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .4px; color: var(--text3); padding: 0 2px 2px;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.inbox-schedule-day-slots { display: flex; flex-direction: column; gap: 3px; max-height: 200px; overflow-y: auto; }
 .inbox-schedule-slot {
-  font-size: 11px; padding: 5px 10px; border-radius: 7px;
+  font-size: 11px; padding: 4px 8px; border-radius: 6px;
   border: 1px solid var(--border); background: var(--surface);
-  cursor: pointer; text-align: left; color: var(--text2);
+  cursor: pointer; text-align: center; color: var(--text2); white-space: nowrap;
   transition: background .15s;
 }
 .inbox-schedule-slot:hover { background: var(--surface3); color: var(--text); border-color: var(--border2); }
@@ -5987,10 +5999,24 @@ async function scheduleInboxNote() {
       return;
     }
 
-    slots.innerHTML = allSlots.map(s =>
-      `<button class="inbox-schedule-slot" onmousedown="event.preventDefault()"
-        onclick="confirmScheduleSlot(${JSON.stringify(s.start)}, ${JSON.stringify(s.end)}, ${JSON.stringify(eventTitle)}, ${JSON.stringify(ownerId)})"
-      >${escapeHtml(s.label)}</button>`
+    // Agrupar por día
+    const dayMap = {};
+    for (const s of allSlots) {
+      const key = s.dayKey || s.start.slice(0, 10);
+      if (!dayMap[key]) dayMap[key] = { header: s.dayLabel || key, slots: [] };
+      dayMap[key].slots.push(s);
+    }
+    slots.innerHTML = Object.values(dayMap).map(day =>
+      `<div class="inbox-schedule-day-col">
+        <div class="inbox-schedule-day-header">${escapeHtml(day.header)}</div>
+        <div class="inbox-schedule-day-slots">${
+          day.slots.map(s =>
+            `<button class="inbox-schedule-slot" onmousedown="event.preventDefault()"
+              onclick="confirmScheduleSlot(${JSON.stringify(s.start)}, ${JSON.stringify(s.end)}, ${JSON.stringify(eventTitle)}, ${JSON.stringify(ownerId)})"
+            >${escapeHtml(s.label)}</button>`
+          ).join('')
+        }</div>
+      </div>`
     ).join('');
 
   } catch (e) {

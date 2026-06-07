@@ -78,11 +78,13 @@ export default async function handler(req) {
   } catch (_) {}
 
   const tz = 'America/Lima';
-  const now = new Date();
-  const timeMin = new Date(now);
-  timeMin.setHours(0, 0, 0, 0);
-  const timeMax = new Date(timeMin);
-  timeMax.setDate(timeMax.getDate() + days);
+  // Lima is UTC-5. Use explicit offset arithmetic so the Edge runtime (UTC) is not affected.
+  const LIMA_OFFSET_MS = -5 * 60 * 60 * 1000;
+  // Start of today in Lima time (midnight Lima = midnight UTC+LIMA_OFFSET)
+  const nowUtc = Date.now();
+  const todayLimaMs = Math.floor((nowUtc + LIMA_OFFSET_MS) / 86400000) * 86400000 - LIMA_OFFSET_MS;
+  const timeMin = new Date(todayLimaMs);
+  const timeMax = new Date(todayLimaMs + days * 86400000);
 
   let busyPeriods = [];
   try {
@@ -116,28 +118,33 @@ export default async function handler(req) {
   }
 
   // Find free slots (every day 7am-11pm Lima, advance by 30min)
+  // Lima = UTC-5: 7am Lima = 12:00 UTC, 11pm Lima = 04:00 UTC next day
+  const SLOT_START_H = 7;   // 7am Lima
+  const SLOT_END_H   = 23;  // 11pm Lima
   const slots = [];
   const dur = durationMin * 60000;
   const minStart = Date.now() + 3600000; // at least 1h from now
 
   for (let d = 0; d < days; d++) {
-    const day = new Date(timeMin);
-    day.setDate(day.getDate() + d);
+    const dayMidnightUtc = todayLimaMs + d * 86400000; // midnight Lima in UTC ms
+    // 7am Lima = midnight Lima UTC + 7h + 5h (Lima offset) = +12h UTC
+    const dayStart = dayMidnightUtc + (SLOT_START_H - LIMA_OFFSET_MS / 3600000) * 3600000;
+    const dayEnd   = dayMidnightUtc + (SLOT_END_H   - LIMA_OFFSET_MS / 3600000) * 3600000;
+    let t = Math.max(dayStart, minStart);
 
-    const dayStart = new Date(day); dayStart.setHours(7, 0, 0, 0);
-    const dayEnd   = new Date(day); dayEnd.setHours(23, 0, 0, 0);
-    let t = Math.max(dayStart.getTime(), minStart);
-
-    while (t + dur <= dayEnd.getTime()) {
+    while (t + dur <= dayEnd) {
       const blocked = merged.some(b => t < b.end && (t + dur) > b.start);
       if (!blocked) {
         const s = new Date(t), e = new Date(t + dur);
-        const fmt = (d) => d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+        const fmt    = (dt) => dt.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: tz });
         const fmtDay = s.toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz });
+        const dayKey = s.toLocaleDateString('es-PE', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: tz });
         slots.push({
           start: s.toISOString(),
           end: e.toISOString(),
-          label: `${fmtDay} · ${fmt(s)} – ${fmt(e)}`
+          label: `${fmt(s)} – ${fmt(e)}`,
+          dayLabel: fmtDay,
+          dayKey,
         });
       }
       t += 30 * 60000;
