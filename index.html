@@ -6069,9 +6069,14 @@ function renderNotesToday() {
   let orderedNotesToday;
   if (notesTodayManualOrder.length) {
     const byId = Object.fromEntries(notesTodayData.map(t=>[t.id,t]));
-    orderedNotesToday = notesTodayManualOrder.map(id=>byId[id]).filter(Boolean);
+    const full = notesTodayManualOrder.map(id=>byId[id]).filter(Boolean);
     const inOrder = new Set(notesTodayManualOrder);
-    notesTodayData.filter(t=>!inOrder.has(t.id)).forEach(t=>orderedNotesToday.push(t));
+    notesTodayData.filter(t=>!inOrder.has(t.id)).forEach(t=>full.push(t));
+    // Siempre: pendientes primero (orden manual), completados al fondo (orden manual entre ellos)
+    orderedNotesToday = [
+      ...full.filter(t => t.estado !== 'completado'),
+      ...full.filter(t => t.estado === 'completado')
+    ];
   } else {
     orderedNotesToday = [...notesTodayData].sort((a, b) => {
       const aDone = a.estado === 'completado' ? 1 : 0;
