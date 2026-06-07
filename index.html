@@ -809,17 +809,14 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   border-color: var(--gold-dim);
   color: var(--gold-dim);
 }
-.quick-chip.chip-urgente.chip-active { background:#ef444420; border-color:#ef4444; color:#ef4444; }
-.quick-chip.chip-alta.chip-active    { background:#f9731620; border-color:#f97316; color:#f97316; }
-.quick-chip.chip-media.chip-active   { background:#eab30820; border-color:#eab308; color:#eab308; }
-.quick-chip.chip-baja.chip-active    { background:#10b98120; border-color:#10b981; color:#10b981; }
-.chip-group-label {
-  font-size: 9px; color: var(--text3); text-transform: uppercase;
-  letter-spacing: .5px; display: flex; align-items: center; gap: 4px;
-  padding: 0 2px;
-}
-.chip-group { display: flex; align-items: center; gap: 4px; }
-.chip-group + .chip-group { padding-left: 8px; border-left: 1px solid var(--border); }
+.quick-chip.chip-urgente { border-color:#ef444440; color:#ef4444; }
+.quick-chip.chip-alta    { border-color:#f9731640; color:#f97316; }
+.quick-chip.chip-media   { border-color:#eab30840; color:#eab308; }
+.quick-chip.chip-baja    { border-color:#10b98140; color:#10b981; }
+.quick-chip.chip-urgente:hover,.quick-chip.chip-urgente.chip-active { background:#ef444420; border-color:#ef4444; color:#ef4444; }
+.quick-chip.chip-alta:hover,   .quick-chip.chip-alta.chip-active    { background:#f9731620; border-color:#f97316; color:#f97316; }
+.quick-chip.chip-media:hover,  .quick-chip.chip-media.chip-active   { background:#eab30820; border-color:#eab308; color:#eab308; }
+.quick-chip.chip-baja:hover,   .quick-chip.chip-baja.chip-active    { background:#10b98120; border-color:#10b981; color:#10b981; }
 /* Panel de agenda inline */
 .inbox-schedule-panel {
   display: none; margin-top: 8px; border: 1px solid var(--border2);
@@ -2018,21 +2015,11 @@ select.form-input option { background: var(--surface2); color: var(--text); }
                   <button class="btn btn-secondary" type="button" onclick="addInboxCardFromEntry()">Agregar</button>
                 </div>
               <div class="notes-quick">
-                  <div class="chip-group">
-                    <span class="chip-group-label">Prioridad</span>
-                    <button id="chip-urgente" type="button" class="quick-chip chip-urgente" onmousedown="event.preventDefault()" onclick="toggleInboxChip('urgente')">Urgente</button>
-                    <button id="chip-alta"    type="button" class="quick-chip chip-alta"    onmousedown="event.preventDefault()" onclick="toggleInboxChip('alta')">Alta</button>
-                    <button id="chip-media"   type="button" class="quick-chip chip-media"   onmousedown="event.preventDefault()" onclick="toggleInboxChip('media')">Media</button>
-                    <button id="chip-baja"    type="button" class="quick-chip chip-baja"    onmousedown="event.preventDefault()" onclick="toggleInboxChip('baja')">Baja</button>
-                  </div>
-                  <div class="chip-group">
-                    <button id="chip-hoy"    type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote('hoy')">📅 Hoy</button>
-                    <button id="chip-manana" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote('manana')">📅 Mañana</button>
-                  </div>
-                  <div class="chip-group">
-                    <button id="chip-delegar" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('delegar')">Delegar</button>
-                    <button id="chip-entidad" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('entidad')">Entidad</button>
-                  </div>
+                  <button id="chip-prioridad" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('prioridad')">Prioridad</button>
+                  <button id="chip-hoy"       type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote('hoy')">Hoy</button>
+                  <button id="chip-manana"    type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote('manana')">Mañana</button>
+                  <button id="chip-delegar"   type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('delegar')">Delegar</button>
+                  <button id="chip-entidad"   type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('entidad')">Entidad</button>
                 </div>
                 <div id="inbox-schedule-panel" class="inbox-schedule-panel">
                   <div class="inbox-schedule-panel-head">
@@ -5856,26 +5843,34 @@ function updateQuickChipStates() {
   } else {
     text = getInboxLineById(activeInboxLineId)?.text || '';
   }
-  const hasUrgente = /(^|\s)!urgente(\s|$)/i.test(text);
-  const hasAlta    = /(^|\s)!alta(\s|$)/i.test(text);
-  const hasMedia   = /(^|\s)!media(\s|$)/i.test(text);
-  const hasBaja    = /(^|\s)!baja(\s|$)/i.test(text);
+  const hasPrio    = /(^|\s)!(urgente|alta|media|baja)(\s|$)/i.test(text);
   const hasDelegar = /(^|\s)@[a-zA-Z0-9_-]+/.test(text);
   const hasEntidad = /(^|\s)#[a-zA-Z0-9_-]+/.test(text);
   const toggle = (id, active) => {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('chip-active', active);
   };
-  toggle('chip-urgente', hasUrgente);
-  toggle('chip-alta',    hasAlta);
-  toggle('chip-media',   hasMedia);
-  toggle('chip-baja',    hasBaja);
-  toggle('chip-delegar', hasDelegar);
-  toggle('chip-entidad', hasEntidad);
+  toggle('chip-prioridad', hasPrio);
+  toggle('chip-delegar',   hasDelegar);
+  toggle('chip-entidad',   hasEntidad);
+  // Actualizar sub-chips de prioridad si el panel está abierto
+  if (_prioSubchipsVisible) showPrioritySubchips(text);
 }
 
+let _prioSubchipsVisible = false;
+
 function toggleInboxChip(chip) {
-  let text, updateFn;
+  // Chip Prioridad: solo muestra/oculta sub-chips, no modifica texto
+  if (chip === 'prioridad') {
+    if (_prioSubchipsVisible) { clearInlineSuggestions(); return; }
+    const currentText = lastInboxFocusSource === 'entry'
+      ? (document.getElementById('notes-inbox-entry')?.value || '')
+      : (getInboxLineById(activeInboxLineId)?.text || '');
+    showPrioritySubchips(currentText);
+    return;
+  }
+
+  let text;
 
   if (lastInboxFocusSource === 'entry') {
     const entry = document.getElementById('notes-inbox-entry');
@@ -5900,7 +5895,6 @@ function toggleInboxChip(chip) {
   if (ta) {
     ta.value = text;
     autosizeNoteTextarea(ta);
-    // Restaurar cursor al final sin scroll ni re-focus
     requestAnimationFrame(() => {
       ta.setSelectionRange(text.length, text.length);
     });
@@ -6052,7 +6046,27 @@ async function confirmScheduleSlot(start, end, title, ownerId) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+function showPrioritySubchips(text) {
+  _prioSubchipsVisible = true;
+  const container = document.getElementById('notes-inline-suggestions');
+  if (!container) return;
+  const prios = [
+    { key: 'urgente', label: 'Urgente', color: '#ef4444' },
+    { key: 'alta',    label: 'Alta',    color: '#f97316' },
+    { key: 'media',   label: 'Media',   color: '#eab308' },
+    { key: 'baja',    label: 'Baja',    color: '#10b981' },
+  ];
+  container.innerHTML = prios.map(p => {
+    const active = new RegExp(`(^|\\s)!${p.key}(\\s|$)`, 'i').test(text);
+    const style = active ? `background:${p.color}20;border-color:${p.color};color:${p.color};` : `border-color:${p.color}40;color:${p.color};`;
+    return `<button type="button" class="quick-chip chip-${p.key}${active ? ' chip-active' : ''}" style="${style}"
+      onmousedown="event.preventDefault()"
+      onclick="toggleInboxChip('${p.key}')">${p.label}</button>`;
+  }).join('');
+}
+
 function clearInlineSuggestions() {
+  _prioSubchipsVisible = false;
   const c = document.getElementById('notes-inline-suggestions');
   if (c) c.innerHTML = '';
 }
