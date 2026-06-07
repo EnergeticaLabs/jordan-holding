@@ -1241,6 +1241,55 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   color: var(--gold-dim);
   border-bottom-color: var(--gold-dim);
 }
+/* ── Redes Sociales tab ─────────────────────────────────────────── */
+.social-config-area { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.social-config-toolbar {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
+}
+.social-config-toolbar-title { font-size: 11px; font-weight: 600; color: var(--text2); }
+.social-network-grid { display: flex; flex-direction: column; gap: 8px; }
+.social-network-row {
+  display: grid; gap: 8px; align-items: center; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface2);
+  grid-template-columns: 26px 1fr 110px 80px auto;
+}
+.social-network-row.readonly { grid-template-columns: 26px 1fr 110px 80px; }
+.social-net-icon { font-size: 16px; line-height: 1; }
+.social-net-url-wrap { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.social-net-name { font-size: 10px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .4px; }
+.social-net-url-input {
+  font-size: 11px; background: transparent; border: none; border-bottom: 1px solid var(--border);
+  color: var(--text); outline: none; width: 100%; padding: 1px 0;
+}
+.social-net-url-input:focus { border-bottom-color: var(--gold-dim); }
+.social-net-url-link { font-size: 11px; color: var(--blue,#60a5fa); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.social-net-url-link:hover { text-decoration: underline; }
+.social-net-url-empty { font-size: 11px; color: var(--text3); font-style: italic; }
+.social-net-freq-select, .social-net-hora-input {
+  font-size: 11px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); padding: 3px 6px; outline: none;
+}
+.social-net-freq-select:focus, .social-net-hora-input:focus { border-color: var(--gold-dim); }
+.social-net-freq-badge {
+  font-size: 9px; padding: 2px 7px; border-radius: 99px;
+  background: var(--surface3); color: var(--text3); white-space: nowrap;
+}
+.social-net-actions { display: flex; gap: 4px; }
+.social-net-toggle { font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text3); cursor: pointer; }
+.social-net-toggle.active { background: var(--green-bg,#14321a); color: var(--green,#4ade80); border-color: var(--green,#4ade80); }
+.social-net-save { font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--gold-dim); background: var(--gold-bg); color: var(--gold-dim); cursor: pointer; }
+.social-add-row {
+  display: flex; gap: 8px; align-items: center; padding: 8px 0;
+}
+.social-gen-tasks-btn {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; padding: 7px 14px; border-radius: 8px;
+  border: 1px dashed var(--gold-dim); background: var(--gold-bg);
+  color: var(--gold-dim); cursor: pointer; font-weight: 600;
+  transition: opacity .15s;
+}
+.social-gen-tasks-btn:hover { opacity: .8; }
+.social-gen-tasks-btn:disabled { opacity: .4; cursor: default; }
 .venture-notes-area {
   padding: 14px 16px;
   display: flex;
@@ -2033,9 +2082,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
                 </div>
               <div class="notes-quick">
                   <button id="chip-prioridad" type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('prioridad')">Prioridad</button>
-                  <button id="chip-agendar"  type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote()">Agendar</button>
                   <button id="chip-delegar"   type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('delegar')">Delegar</button>
                   <button id="chip-entidad"   type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="toggleInboxChip('entidad')">Entidad</button>
+                  <button id="chip-agendar"  type="button" class="quick-chip" onmousedown="event.preventDefault()" onclick="scheduleInboxNote()">Agendar</button>
                 </div>
                 <div id="inbox-schedule-panel" class="inbox-schedule-panel">
                   <div class="inbox-schedule-panel-head">
@@ -2455,6 +2504,7 @@ let currentTasksQuickFilter = 'all';
 let venturesData = [];
 let tasksData    = [];
 let tasksProgressData = [];
+let ventureSocialConfig = []; // venture_social_config rows keyed in memory
 let notesTodayData = [];
 let notesTodayManualOrder = [];
 let usersData = [];
@@ -4237,21 +4287,164 @@ function openVentureDetails(ventureId, resetTab = false) {
 
 function switchVentureTab(tab) {
   ventureActiveTab = tab;
-  const notas = document.getElementById('venture-tab-notas');
+  const notas  = document.getElementById('venture-tab-notas');
   const tareas = document.getElementById('venture-tab-tareas');
-  const btnNotas = document.getElementById('venture-tab-btn-notas');
+  const redes  = document.getElementById('venture-tab-redes');
+  const btnNotas  = document.getElementById('venture-tab-btn-notas');
   const btnTareas = document.getElementById('venture-tab-btn-tareas');
+  const btnRedes  = document.getElementById('venture-tab-btn-redes');
   if (!notas || !tareas) return;
-  notas.style.display = tab === 'notas' ? '' : 'none';
+  notas.style.display  = tab === 'notas'  ? '' : 'none';
   tareas.style.display = tab === 'tareas' ? '' : 'none';
-  if (btnNotas) btnNotas.classList.toggle('active', tab === 'notas');
+  if (redes) {
+    redes.style.display = tab === 'redes' ? '' : 'none';
+    // Render lazy si aún está vacío
+    if (tab === 'redes' && !redes.innerHTML.trim()) {
+      const ventureId = ventureSocialConfig[0]?.venture_id
+        || document.querySelector('.venture-detail-card')?.id?.replace('venture-detail-','');
+      // Obtener el venture activo del DOM
+      const card = document.getElementById('ventures-detail')?.querySelector('[id^="venture-detail-"]');
+      const vId = card?.id?.replace('venture-detail-','');
+      if (vId) {
+        loadVentureSocialConfig(vId).then(() => {
+          redes.innerHTML = renderSocialConfigTab(vId);
+        });
+      }
+    }
+  }
+  if (btnNotas)  btnNotas.classList.toggle('active',  tab === 'notas');
   if (btnTareas) btnTareas.classList.toggle('active', tab === 'tareas');
+  if (btnRedes)  btnRedes.classList.toggle('active',  tab === 'redes');
 }
 
 function scheduleVentureNotesSave(ventureId, text) {
   if (ventureNotesSaveTimers[ventureId]) clearTimeout(ventureNotesSaveTimers[ventureId]);
   ventureNotesSaveTimers[ventureId] = setTimeout(() => saveVentureNotes(ventureId, text), 900);
 }
+
+// ── Redes Sociales ──────────────────────────────────────────────────────────
+const SOCIAL_ICONS = { facebook:'📘', instagram:'📸', tiktok:'🎵', x:'𝕏', youtube:'▶️', linkedin:'💼' };
+const SOCIAL_LABELS = { facebook:'Facebook', instagram:'Instagram', tiktok:'TikTok', x:'X / Twitter', youtube:'YouTube', linkedin:'LinkedIn' };
+const SOCIAL_FREQ_LABELS = { daily:'Diario', every_2_days:'C/2 días', every_3_days:'C/3 días', weekly:'Semanal', biweekly:'Quincenal' };
+const SOCIAL_ALL_NETS = ['facebook','instagram','tiktok','x','youtube','linkedin'];
+
+async function loadVentureSocialConfig(ventureId) {
+  const { data } = await sb.from('venture_social_config')
+    .select('*').eq('venture_id', ventureId).order('red');
+  // Replace entries for this venture in memory
+  ventureSocialConfig = ventureSocialConfig.filter(r => r.venture_id !== ventureId);
+  if (data) ventureSocialConfig.push(...data);
+  return data || [];
+}
+
+function renderSocialConfigTab(ventureId) {
+  const isOwner = currentUserRole === 'owner';
+  const rows = ventureSocialConfig.filter(r => r.venture_id === ventureId);
+  const usedNets = new Set(rows.map(r => r.red));
+  const availableNets = SOCIAL_ALL_NETS.filter(n => !usedNets.has(n));
+
+  const rowsHtml = rows.map(r => {
+    const icon = SOCIAL_ICONS[r.red] || '🌐';
+    const label = SOCIAL_LABELS[r.red] || r.red;
+    const freqLabel = SOCIAL_FREQ_LABELS[r.frecuencia] || r.frecuencia;
+    if (!isOwner) {
+      // Vista solo lectura con link clicable
+      const linkHtml = r.url
+        ? `<a class="social-net-url-link" href="${escapeHtml(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.url)}</a>`
+        : `<span class="social-net-url-empty">Sin URL configurada</span>`;
+      return `<div class="social-network-row readonly">
+        <span class="social-net-icon">${icon}</span>
+        <div class="social-net-url-wrap">
+          <span class="social-net-name">${escapeHtml(label)}</span>
+          ${linkHtml}
+        </div>
+        <span class="social-net-freq-badge">${escapeHtml(freqLabel)}</span>
+        <span class="social-net-freq-badge">${escapeHtml(r.hora_ideal?.slice(0,5) || '--')}</span>
+      </div>`;
+    }
+    return `<div class="social-network-row" id="social-row-${r.id}">
+      <span class="social-net-icon">${icon}</span>
+      <div class="social-net-url-wrap">
+        <span class="social-net-name">${escapeHtml(label)}</span>
+        <input class="social-net-url-input" type="url" placeholder="https://..." value="${escapeHtml(r.url || '')}"
+          id="social-url-${r.id}" />
+      </div>
+      <select class="social-net-freq-select" id="social-freq-${r.id}">
+        ${Object.entries(SOCIAL_FREQ_LABELS).map(([v,l]) =>
+          `<option value="${v}" ${r.frecuencia===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <input class="social-net-hora-input" type="time" value="${r.hora_ideal?.slice(0,5)||'10:00'}" id="social-hora-${r.id}" />
+      <div class="social-net-actions">
+        <button class="social-net-toggle ${r.activo?'active':''}" title="${r.activo?'Activo':'Inactivo'}"
+          onclick="toggleSocialRow('${r.id}','${ventureId}')">${r.activo?'✓ Activo':'✗ Pausado'}</button>
+        <button class="social-net-save" onclick="saveSocialRow('${r.id}','${ventureId}')">Guardar</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  const addRowHtml = isOwner && availableNets.length ? `
+    <div class="social-add-row">
+      <select class="social-net-freq-select" id="social-add-net-${ventureId}" style="min-width:120px;">
+        ${availableNets.map(n => `<option value="${n}">${SOCIAL_ICONS[n]} ${SOCIAL_LABELS[n]}</option>`).join('')}
+      </select>
+      <button class="social-net-save" onclick="addSocialRow('${ventureId}')">+ Agregar red</button>
+    </div>` : '';
+
+  const genBtn = isOwner ? `
+    <button class="social-gen-tasks-btn" onclick="generateWeeklyTasks('${ventureId}')" title="Próximamente: generación automática con IA">
+      ✨ Generar tareas de la semana
+    </button>` : '';
+
+  return `<div class="social-config-area">
+    <div class="social-config-toolbar">
+      <span class="social-config-toolbar-title">Redes sociales${isOwner ? ' — configuración' : ''}</span>
+      ${genBtn}
+    </div>
+    <div class="social-network-grid">${rowsHtml}</div>
+    ${addRowHtml}
+  </div>`;
+}
+
+async function saveSocialRow(rowId, ventureId) {
+  const url   = document.getElementById(`social-url-${rowId}`)?.value?.trim() || null;
+  const freq  = document.getElementById(`social-freq-${rowId}`)?.value || 'daily';
+  const hora  = document.getElementById(`social-hora-${rowId}`)?.value || '10:00';
+  const { error } = await sb.from('venture_social_config')
+    .update({ url, frecuencia: freq, hora_ideal: hora + ':00' })
+    .eq('id', rowId);
+  if (error) { alert('Error al guardar: ' + error.message); return; }
+  const row = ventureSocialConfig.find(r => r.id === rowId);
+  if (row) { row.url = url; row.frecuencia = freq; row.hora_ideal = hora + ':00'; }
+  const btn = document.querySelector(`button[onclick="saveSocialRow('${rowId}','${ventureId}')"]`);
+  if (btn) { const orig = btn.textContent; btn.textContent = '✓'; btn.style.opacity='.6'; setTimeout(()=>{ btn.textContent=orig; btn.style.opacity=''; }, 1200); }
+}
+
+async function toggleSocialRow(rowId, ventureId) {
+  const row = ventureSocialConfig.find(r => r.id === rowId);
+  if (!row) return;
+  const newActivo = !row.activo;
+  const { error } = await sb.from('venture_social_config').update({ activo: newActivo }).eq('id', rowId);
+  if (error) { alert('Error: ' + error.message); return; }
+  row.activo = newActivo;
+  document.getElementById('venture-tab-redes').innerHTML = renderSocialConfigTab(ventureId);
+}
+
+async function addSocialRow(ventureId) {
+  const red = document.getElementById(`social-add-net-${ventureId}`)?.value;
+  if (!red) return;
+  const { data, error } = await sb.from('venture_social_config')
+    .insert({ venture_id: ventureId, red, frecuencia: 'daily', activo: true })
+    .select().single();
+  if (error) { alert('Error: ' + error.message); return; }
+  ventureSocialConfig.push(data);
+  document.getElementById('venture-tab-redes').innerHTML = renderSocialConfigTab(ventureId);
+}
+
+function generateWeeklyTasks(ventureId) {
+  // Placeholder — será conectado a IA
+  alert('🚧 Próximamente: la IA leerá la configuración de redes, el horario del ejecutor y generará las tareas de la semana automáticamente.');
+}
+// ── Fin Redes Sociales ──────────────────────────────────────────────────────
 
 async function saveVentureNotes(ventureId, text) {
   const v = venturesData.find(v => String(v.id) === String(ventureId));
@@ -4557,7 +4750,15 @@ function renderVenturesDetail() {
     </div>`;
 
   const notasActiva = ventureActiveTab === 'notas';
+  const redesActiva  = ventureActiveTab === 'redes';
   const notasLibres = escapeHtml(selected.notas_libres || '');
+  // Cargar config de redes si no está en memoria aún
+  if (!ventureSocialConfig.some(r => r.venture_id === selected.id)) {
+    loadVentureSocialConfig(selected.id).then(() => {
+      const panel = document.getElementById('venture-tab-redes');
+      if (panel) panel.innerHTML = renderSocialConfigTab(selected.id);
+    });
+  }
 
   document.getElementById('ventures-detail').innerHTML = `
     <div class="venture-detail-card" id="venture-detail-${selected.id}">
@@ -4586,9 +4787,10 @@ function renderVenturesDetail() {
       </div>
       <div class="venture-tabs">
         <button id="venture-tab-btn-notas" type="button" class="venture-tab ${notasActiva ? 'active' : ''}" onclick="switchVentureTab('notas')">✎ Notas</button>
-        <button id="venture-tab-btn-tareas" type="button" class="venture-tab ${!notasActiva ? 'active' : ''}" onclick="switchVentureTab('tareas')">✓ Tareas</button>
+        <button id="venture-tab-btn-tareas" type="button" class="venture-tab ${(!notasActiva && !redesActiva) ? 'active' : ''}" onclick="switchVentureTab('tareas')">✓ Tareas</button>
+        <button id="venture-tab-btn-redes" type="button" class="venture-tab ${redesActiva ? 'active' : ''}" onclick="switchVentureTab('redes')">📡 Redes</button>
       </div>
-      <div id="venture-tab-notas" ${!notasActiva ? 'style="display:none"' : ''}>
+      <div id="venture-tab-notas" ${(!notasActiva) ? 'style="display:none"' : ''}>
         <div class="venture-notes-area">
           <textarea id="venture-notes-textarea" class="venture-notes-textarea"
             placeholder="Escribe libremente sobre este venture. Selecciona texto para enviarlo al inbox."
@@ -4601,7 +4803,7 @@ function renderVenturesDetail() {
           <div id="ia-suggestions-container"></div>
         </div>
       </div>
-      <div id="venture-tab-tareas" ${notasActiva ? 'style="display:none"' : ''}>
+      <div id="venture-tab-tareas" ${(notasActiva || redesActiva) ? 'style="display:none"' : ''}>
         <div class="venture-detail-body">
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text3);margin-bottom:6px;">
             <span>Avance ${selectedProgress}% · ${venturePendingTasks.length} pendientes · ${ventureInProgressTasks.length + ventureRevisionTasks.length + ventureAprobacionTasks.length} en curso</span>
@@ -4616,6 +4818,7 @@ function renderVenturesDetail() {
           ${isOwner && ventureTasksView === 'lista' ? listaHtml : kanbanHtml}
         </div>
       </div>
+      <div id="venture-tab-redes" ${!redesActiva ? 'style="display:none"' : ''}>${redesActiva ? renderSocialConfigTab(selected.id) : ''}</div>
     </div>`;
 }
 
@@ -5940,12 +6143,14 @@ function applyChipToText(chip, text) {
 }
 
 // ─── Agenda Inbox en Calendario ────────────────────────────────────────────
-let _scheduleTarget = null; // 'hoy' | 'manana'
+let _scheduleTarget = null;
+let _scheduleContext = null; // parsed note context when panel is open
 
 function closeSchedulePanel() {
   const panel = document.getElementById('inbox-schedule-panel');
   if (panel) panel.classList.remove('open');
   _scheduleTarget = null;
+  _scheduleContext = null;
 }
 
 async function scheduleInboxNote() {
@@ -5969,12 +6174,12 @@ async function scheduleInboxNote() {
   } else {
     noteText = getInboxLineById(activeInboxLineId)?.text?.trim() || '';
   }
-  // Limpiar tokens de syntax del texto para usarlo como título del evento
-  const eventTitle = noteText
-    .replace(/\[\s*\]/g, '').replace(/!(urgente|alta|media|baja)/gi, '')
-    .replace(/(^|\s)(hoy|manana|mañana)(\s|$)/gi, ' ')
-    .replace(/(^|\s)@[^\s]+/g, '').replace(/(^|\s)#[^\s]+/g, '')
-    .replace(/\s+/g, ' ').trim() || 'Tarea desde inbox';
+
+  // Parsear el contexto completo (assignees, venture, priority)
+  _scheduleContext = parseInboxLine(noteText);
+
+  // Título limpio para el evento
+  const eventTitle = _scheduleContext.title || 'Tarea desde inbox';
 
   // Resolver owner_id: si el usuario actual es owner usamos su propio ID,
   // si no, buscamos el owner en usersData
@@ -6029,11 +6234,45 @@ async function confirmScheduleSlot(start, end, title, ownerId) {
   const slotsEl = document.getElementById('inbox-schedule-slots');
   if (slotsEl) slotsEl.innerHTML = '<span class="inbox-schedule-loading">Creando evento…</span>';
 
+  // Extraer @persona y #entidad de la nota activa
+  let rawText = '';
+  if (lastInboxFocusSource === 'entry') {
+    rawText = document.getElementById('notes-inbox-entry')?.value || '';
+  } else {
+    rawText = getInboxLineById(activeInboxLineId)?.text || '';
+  }
+  const meta = parseTaskMeta(rawText);
+
+  // Resolver email del primer asignado (@persona)
+  let attendeeEmail = null;
+  if (meta.assignees && meta.assignees.length) {
+    const tagNorm = normalizeText(meta.assignees[0]).replace(/\s+/g, '');
+    const assignedUser = usersData.find(u => {
+      const uNorm = normalizeText(u.nombre).replace(/\s+/g, '');
+      return uNorm === tagNorm || uNorm.startsWith(tagNorm) || tagNorm.startsWith(uNorm);
+    });
+    attendeeEmail = assignedUser?.email || null;
+  }
+
+  // Resolver venture_id de la primera entidad (#entidad)
+  let ventureId = null;
+  if (meta.entities && meta.entities.length) {
+    const eNorm = normalizeText(meta.entities[0]).replace(/\s+/g, '');
+    const venture = venturesData.find(v => {
+      const aliases = getVentureAliases(v);
+      return aliases.some(a => {
+        const aNorm = a.replace(/\s+/g, '');
+        return aNorm.includes(eNorm) || eNorm.includes(aNorm);
+      });
+    });
+    ventureId = venture?.id || null;
+  }
+
   try {
     const res = await fetch('/api/calendar/create-event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ owner_id: ownerId, title, start, end, notes: 'Agendado desde Inbox libre' })
+      body: JSON.stringify({ owner_id: ownerId, title, start, end, notes: 'Agendado desde Inbox libre', attendee_email: attendeeEmail })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Error desconocido');
@@ -6043,12 +6282,14 @@ async function confirmScheduleSlot(start, end, title, ownerId) {
     const dateLabel = new Date(start).toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/Lima' });
     const calTag = `[📅 ${dateLabel} ${slotLabel}]`;
 
+    let linkedTaskId = null;
     if (lastInboxFocusSource === 'entry') {
       const entry = document.getElementById('notes-inbox-entry');
       if (entry) { entry.value = (entry.value.trim() + ' ' + calTag).trim(); updateQuickChipStates(); }
     } else {
       const line = getInboxLineById(activeInboxLineId);
       if (line) {
+        linkedTaskId = notesTaskLinkMap[line.id] || null;
         line.text = (line.text || '').trim() + ' ' + calTag;
         saveInboxLines();
         const ta = document.querySelector(`.notes-line-input[data-line-id="${line.id}"]`);
@@ -6058,7 +6299,20 @@ async function confirmScheduleSlot(start, end, title, ownerId) {
       }
     }
 
-    if (slotsEl) slotsEl.innerHTML = `<span class="inbox-schedule-empty" style="color:var(--success,#10b981)">✓ Evento creado: ${escapeHtml(slotLabel)} — <a href="${escapeHtml(data.event_link || '#')}" target="_blank" style="color:inherit">ver en Calendar</a></span>`;
+    // Actualizar tarea vinculada: fecha_limite + venture_id
+    if (linkedTaskId) {
+      const taskUpdates = { fecha_limite: new Date(start).toISOString() };
+      if (ventureId) taskUpdates.venture_id = ventureId;
+      await sb.from('tareas').update(taskUpdates).eq('id', linkedTaskId);
+      const taskIdx = notesTodayData.findIndex(t => String(t.id) === String(linkedTaskId));
+      if (taskIdx >= 0) {
+        notesTodayData[taskIdx].fecha_limite = taskUpdates.fecha_limite;
+        if (ventureId) notesTodayData[taskIdx].venture_id = ventureId;
+      }
+      renderNotesToday();
+    }
+
+    if (slotsEl) slotsEl.innerHTML = `<span class="inbox-schedule-empty" style="color:var(--success,#10b981)">✓ Evento creado: ${escapeHtml(new Date(start).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' }))}${attendeeEmail ? ` — invitación enviada a ${escapeHtml(attendeeEmail)}` : ''} — <a href="${escapeHtml(data.event_link || '#')}" target="_blank" style="color:inherit">ver en Calendar</a></span>`;
 
     // Invalidar caché del calendario y recargar
     const weekKey = new Date(start).toISOString().slice(0, 10);
