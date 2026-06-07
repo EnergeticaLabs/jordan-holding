@@ -2398,6 +2398,7 @@ let venturesData = [];
 let tasksData    = [];
 let tasksProgressData = [];
 let notesTodayData = [];
+let notesTodayManualOrder = [];
 let usersData = [];
 let notesPreviewData = [];
 let notesTaskLinkMap = {};
@@ -4822,6 +4823,22 @@ function getNotesDraftKey() {
 function getNotesLinkMapKey() {
   return `vfh-notes-linkmap-${currentUser?.id || 'anon'}`;
 }
+function getNotesTodayOrderKey() { return `vfh-notes-today-order-${currentUser?.id||'anon'}`; }
+function loadNotesTodayOrder() { try { notesTodayManualOrder = JSON.parse(localStorage.getItem(getNotesTodayOrderKey())||'[]'); } catch(e) { notesTodayManualOrder=[]; } }
+function saveNotesTodayOrder() { localStorage.setItem(getNotesTodayOrderKey(), JSON.stringify(notesTodayManualOrder)); }
+function moveNoteToday(id, dir) {
+  loadNotesTodayOrder();
+  if (!notesTodayManualOrder.length) {
+    notesTodayManualOrder = document.querySelectorAll('#notes-today-list [data-tid]') ? [...document.querySelectorAll('#notes-today-list [data-tid]')].map(el=>el.dataset.tid) : notesTodayData.map(t=>t.id);
+  }
+  const idx = notesTodayManualOrder.indexOf(id);
+  if (idx === -1) return;
+  const swap = dir==='up' ? idx-1 : idx+1;
+  if (swap < 0 || swap >= notesTodayManualOrder.length) return;
+  [notesTodayManualOrder[idx], notesTodayManualOrder[swap]] = [notesTodayManualOrder[swap], notesTodayManualOrder[idx]];
+  saveNotesTodayOrder();
+  renderNotesToday();
+}
 
 function getNotesTodayCacheKey() {
   return `vfh-notes-today-${currentUser?.id || 'anon'}`;
@@ -6048,14 +6065,23 @@ function renderNotesToday() {
     return;
   }
   const PRIO_ORDER = { urgente: 0, alta: 1, media: 2, baja: 3 };
-  const orderedNotesToday = [...notesTodayData].sort((a, b) => {
-    const aDone = a.estado === 'completado' ? 1 : 0;
-    const bDone = b.estado === 'completado' ? 1 : 0;
-    if (aDone !== bDone) return aDone - bDone;
-    const pa = PRIO_ORDER[a.prioridad] ?? 2;
-    const pb = PRIO_ORDER[b.prioridad] ?? 2;
-    return pa - pb;
-  });
+  loadNotesTodayOrder();
+  let orderedNotesToday;
+  if (notesTodayManualOrder.length) {
+    const byId = Object.fromEntries(notesTodayData.map(t=>[t.id,t]));
+    orderedNotesToday = notesTodayManualOrder.map(id=>byId[id]).filter(Boolean);
+    const inOrder = new Set(notesTodayManualOrder);
+    notesTodayData.filter(t=>!inOrder.has(t.id)).forEach(t=>orderedNotesToday.push(t));
+  } else {
+    orderedNotesToday = [...notesTodayData].sort((a, b) => {
+      const aDone = a.estado === 'completado' ? 1 : 0;
+      const bDone = b.estado === 'completado' ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      const pa = PRIO_ORDER[a.prioridad] ?? 2;
+      const pb = PRIO_ORDER[b.prioridad] ?? 2;
+      return pa - pb;
+    });
+  }
 
   el.innerHTML = orderedNotesToday.map(t => {
     const meta = parseTaskMeta(t.titulo);
@@ -6080,7 +6106,7 @@ function renderNotesToday() {
     }).join('');
     return `
     <div class="task-item">
-      <div class="notes-today-item">
+      <div class="notes-today-item" data-tid="${t.id}">
         <div class="task-check ${t.estado === 'completado' ? 'done' : ''}" onclick="toggleTask('${t.id}',this)">${t.estado === 'completado' ? '✓' : ''}</div>
         <div class="notes-today-main">
           <span class="notes-title-inline ${t.estado === 'completado' ? 'done-text' : ''}">${escapeHtml(meta.cleanTitle)}</span>
@@ -6091,6 +6117,10 @@ function renderNotesToday() {
         <div class="notes-priority-col">
             <span class="time-est">⏱ ${estimateTaskTime(t)}</span>
             <span class="prio-badge ${t.prioridad || 'media'}">${t.prioridad || 'media'}</span>
+            <span style="display:inline-flex;flex-direction:column;gap:0;margin-left:2px;">
+              <button onclick="moveNoteToday('${t.id}','up')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:7px;padding:0;line-height:1;" title="Subir">▲</button>
+              <button onclick="moveNoteToday('${t.id}','down')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:7px;padding:0;line-height:1;" title="Bajar">▼</button>
+            </span>
           </div>
       </div>
     </div>
