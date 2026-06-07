@@ -175,7 +175,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 /* ══════════════════════════════════════════
    APP SHELL
 ══════════════════════════════════════════ */
-#app { display: none; height: 100vh; flex-direction: column; overflow: hidden; max-width: 100vw; }
+#app { display: none; height: 100vh; flex-direction: column; }
 #app.visible { display: flex; }
 
 /* ══ TOPBAR ══ */
@@ -1658,16 +1658,6 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     margin-bottom: 10px;
     justify-content: flex-end;
   }
-  #page-calendario .page-header {
-    justify-content: space-between;
-    align-items: center;
-  }
-  #page-calendario .page-header-copy {
-    display: block;
-  }
-  #page-calendario .page-title {
-    font-size: 15px;
-  }
 
   .sidebar {
     position: fixed; left: 0; top: 56px; bottom: 0;
@@ -1684,7 +1674,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   }
   .sidebar-overlay.open { display: block; }
 
-  .main { padding: 16px; overflow-x: hidden; max-width: 100%; }
+  .main { padding: 16px; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 7px; }
   .dashboard-kpi-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
@@ -2073,7 +2063,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <!-- CALENDARIO -->
       <div class="page" id="page-calendario">
         <div class="page-header">
-          <div class="page-header-copy" style="display:block!important;">
+          <div class="page-header-copy">
             <div class="page-title">Calendario</div>
             <div class="page-sub" id="cal-subtitle">Planificación del holding</div>
           </div>
