@@ -682,9 +682,11 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .cal-day-cell.is-weekend { background: var(--bg2); }
 .cal-day-num { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
 .cal-day-cell.is-today .cal-day-num { color: var(--gold); }
-.cal-day-dots { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 2px; }
-.cal-day-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
-.cal-day-count { font-size: 9px; color: var(--text3); }
+.cal-venture-slot {
+  display: flex; align-items: center; gap: 3px;
+  padding: 1px 4px; border-radius: 3px; margin-bottom: 2px;
+  min-width: 0; overflow: hidden;
+}
 /* Venture inline selector */
 .venture-selector-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
 .venture-chip-btn {
@@ -3153,18 +3155,31 @@ function renderMiHorario() {
     const pendCount  = dayTasks.filter(t => t.estado !== 'completado').length;
     const doneCount  = dayTasks.filter(t => t.estado === 'completado').length;
 
-    const dots = dayTasks.slice(0, 8).map(t => {
-      const pc   = PRIO_COLOR[t.prioridad] || PRIO_COLOR.media;
-      const done = t.estado === 'completado';
-      return `<div class="cal-day-dot" style="background:${done ? 'var(--border)' : pc};"></div>`;
+      // Agrupar por venture para mostrar slots con nombre
+    const ventureGroups = {};
+    dayTasks.forEach(t => {
+      const vid = t.venture_id || '__none';
+      if (!ventureGroups[vid]) {
+        const v = venturesData.find(vv => String(vv.id) === String(t.venture_id));
+        ventureGroups[vid] = { venture: v, tasks: [], color: getVentureColor(t.venture_id) };
+      }
+      ventureGroups[vid].tasks.push(t);
+    });
+    const ventureSlots = Object.values(ventureGroups).map(g => {
+      const v = g.venture;
+      const cnt = g.tasks.length;
+      const allDone = g.tasks.every(t => t.estado === 'completado');
+      const label = v ? `${v.emoji} ${v.nombre}` : 'Sin venture';
+      return `<div class="cal-venture-slot" style="background:${g.color}22;border-left:2px solid ${g.color};opacity:${allDone?.5:1};">
+        <span style="font-size:9px;color:${g.color};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(label)}</span>
+        ${cnt > 1 ? `<span style="font-size:8px;color:${g.color};opacity:.8;flex-shrink:0;">${cnt}</span>` : ''}
+      </div>`;
     }).join('');
-
-    const countLabel = [pendCount > 0 ? `${pendCount} pend` : '', doneCount > 0 ? `${doneCount} ✓` : ''].filter(Boolean).join(' · ');
 
     return `<div class="cal-day-cell${isToday?' is-today':''}${isWeekend?' is-weekend':''}${hasTasks?' has-tasks':''}"
       ${hasTasks ? `onclick="openExecutorDayPanel('${dayStr}')"` : ''}>
       <div class="cal-day-num">${dayNum}</div>
-      ${hasTasks ? `<div class="cal-day-dots">${dots}</div><div class="cal-day-count">${countLabel}</div>` : ''}
+      ${hasTasks ? ventureSlots : ''}
     </div>`;
   }).join('');
 
@@ -3192,6 +3207,7 @@ function renderMiHorario() {
         <div style="font-size:9px;color:var(--text3);">de S/ ${parseFloat(goal.variable_max||0).toFixed(0)}</div>
       </div>` : ''}
     </div>
+    <div style="font-size:12px;font-weight:600;color:var(--text);text-transform:capitalize;margin-bottom:8px;">${targetDate.toLocaleDateString('es-PE',{month:'long',year:'numeric'})}</div>
     <div class="cal-month-grid">
       ${headerCells}
       ${dayCells}
@@ -4809,7 +4825,7 @@ function renderExecutorVentureDetail() {
     const vt = tasksData.filter(t => String(t.venture_id||'') === String(v.id));
     if (!vt.length) return '';
     const active = String(v.id) === String(selected.id);
-    return `<div class="sidebar-item ${active?'active':''}" onclick="selectedVentureId='${v.id}';renderVenturesDetail();closeSidebar()">
+    return `<div class="sidebar-item ${active?'active':''}" onclick="selectedVentureId='${v.id}';setPage('ventures');renderVenturesDetail();closeSidebar()">
       <span class="sidebar-icon">${v.emoji}</span>${escapeHtml(v.nombre)}
       ${vt.length ? `<span class="sidebar-badge">${vt.filter(t=>t.estado!=='completado').length}</span>` : ''}
     </div>`;
