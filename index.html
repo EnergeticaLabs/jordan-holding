@@ -4030,6 +4030,8 @@ async function loadApp() {
   await loadVentures();
   await Promise.all([loadTasks(), loadActivity(), loadUsers()]);
   renderDashboard();
+  renderTasksPanel();
+  renderTareasPage();
   // Chequear GCal en background para el sidebar
   if (currentUserRole === 'owner') checkGcalConnection();
   // Cargar datos de horarios y objetivos en background
@@ -4038,7 +4040,7 @@ async function loadApp() {
     sb.from('work_schedule_blocks').select('*, ventures(nombre,emoji)')
       .eq('user_id', currentProfileId).eq('active', true)
       .order('day_of_week').order('start_time')
-      .then(({ data }) => { scheduleBlocksData = data || []; renderTareasPage(); });
+      .then(({ data }) => { scheduleBlocksData = data || []; });
   }
 
   // Notificaciones de retorno OAuth
