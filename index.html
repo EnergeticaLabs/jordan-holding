@@ -3064,6 +3064,141 @@ function renderMiHorario() {
     return d;
   });
 
+  const todayStr = now.toISOString().slice(0, 10);
+  const hoyBtn = document.getElementById('mi-horario-hoy-btn');
+  if (hoyBtn) hoyBtn.style.display = miHorarioOffset !== 0 ? '' : 'none';
+
+  const doneTasks  = tasksProgressData.filter(t => t.estado === 'completado').length;
+  const allTasks   = tasksProgressData.length;
+  const progress   = allTasks ? Math.round(doneTasks / allTasks * 100) : 0;
+  const mesKey     = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const goal       = goalsData.find(g => g.user_id === currentProfileId && g.mes === mesKey);
+  const varEarned  = goal ? (goal.variable_max * progress / 100).toFixed(0) : null;
+  const fmt = d => d.toLocaleDateString('es-PE', { day:'numeric', month:'short' });
+  const PRIO_COLOR = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
+
+  const weekGrid = days.map((day, i) => {
+    const dayDow  = i + 1;
+    const dayStr  = day.toISOString().slice(0, 10);
+    const isToday = dayStr === todayStr;
+    const dayTasks = tasksData.filter(t => t.fecha_limite?.slice(0,10) === dayStr);
+    const doneDay  = dayTasks.filter(t => t.estado === 'completado').length;
+    const pendDay  = dayTasks.filter(t => t.estado !== 'completado').length;
+    const hasWork  = [1,2,3,4,5].includes(dayDow); // lun-vie
+    return `<div class="sch-day-col ${isToday ? 'sch-day-today' : ''}"
+        style="cursor:${dayTasks.length?'pointer':'default'};"
+        onclick="${dayTasks.length ? `openExecutorDayPanel('${dayStr}')` : ''}">
+      <div class="sch-day-header">${DAYS_LABELS[dayDow]}<br>
+        <span style="font-size:10px;font-weight:400;">${fmt(day)}</span>
+      </div>
+      <div class="sch-day-body">
+        ${hasWork ? `<div style="font-size:10px;color:var(--text3);margin-bottom:4px;">9:00 – 13:00</div>` : ''}
+        ${dayTasks.length ? `
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            ${dayTasks.slice(0,4).map(t=>{
+              const pc = PRIO_COLOR[t.prioridad]||PRIO_COLOR.media;
+              const done = t.estado==='completado';
+              return `<div style="display:flex;align-items:center;gap:4px;opacity:${done?.5:1}">
+                <div style="width:3px;height:20px;border-radius:2px;background:${pc};flex-shrink:0;"></div>
+                <div style="font-size:10px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${done?'text-decoration:line-through;':''}">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+              </div>`;
+            }).join('')}
+            ${dayTasks.length>4?`<div style="font-size:9px;color:var(--text3);">+${dayTasks.length-4} más</div>`:''}
+          </div>
+          <div style="margin-top:6px;font-size:9px;color:var(--text3);">${pendDay} pend · ${doneDay} ✓${dayTasks.length?' · <span style="color:var(--gold)">ver kanban →</span>':''}</div>
+        ` : (hasWork ? `<div style="font-size:10px;color:var(--text3);">Sin tareas</div>` : `<div style="font-size:10px;color:var(--text3);opacity:.4;">Descanso</div>`)}
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="kpi-card" style="min-width:120px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:18px;">${progress}<span style="font-size:11px;">%</span></div>
+        <div class="kpi-label">Progreso del mes</div>
+        <div style="height:4px;background:var(--border);border-radius:2px;margin-top:6px;">
+          <div style="height:100%;width:${progress}%;background:var(--gold);border-radius:2px;"></div>
+        </div>
+      </div>
+      <div class="kpi-card" style="min-width:120px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:18px;">${tasksData.filter(t=>t.estado!=='completado').length}</div>
+        <div class="kpi-label">Tareas pendientes</div>
+      </div>
+      ${goal ? `
+      <div class="kpi-card" style="min-width:120px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:18px;">S/ ${parseFloat(goal.sueldo_fijo||0).toFixed(0)}</div>
+        <div class="kpi-label">Sueldo fijo</div>
+      </div>
+      <div class="kpi-card" style="min-width:120px;padding:12px 16px;">
+        <div class="kpi-value" style="font-size:18px;color:var(--gold);">S/ ${varEarned}</div>
+        <div class="kpi-label">Variable ganado</div>
+        <div style="font-size:10px;color:var(--text3);">de S/ ${parseFloat(goal.variable_max||0).toFixed(0)} máx.</div>
+      </div>` : ''}
+    </div>
+    <div class="sch-week-grid" id="exec-week-grid">${weekGrid}</div>
+    <div id="exec-day-panel" style="display:none;margin-top:16px;"></div>
+  `;
+}
+
+function openExecutorDayPanel(dateStr) {
+  const panel = document.getElementById('exec-day-panel');
+  if (!panel) return;
+  const dayTasks = tasksData.filter(t => t.fecha_limite?.slice(0,10) === dateStr);
+  if (!dayTasks.length) { panel.style.display = 'none'; return; }
+
+  const d = new Date(dateStr + 'T12:00:00');
+  const label = d.toLocaleDateString('es-PE', { weekday:'long', day:'numeric', month:'long' });
+
+  const ESTADO_COLS = [
+    { key:'pendiente',      label:'Por hacer',   color:'var(--border)' },
+    { key:'en_progreso',    label:'En progreso', color:'var(--blue,#60a5fa)' },
+    { key:'en_revision',    label:'En revisión', color:'var(--amber,#f59e0b)' },
+    { key:'en_aprobacion',  label:'Aprobación',  color:'var(--purple,#a78bfa)' },
+    { key:'en_publicacion', label:'Publicar',    color:'#38bdf8' },
+    { key:'completado',     label:'Completado',  color:'var(--green,#4ade80)' },
+  ];
+
+  const cols = ESTADO_COLS.map(col => {
+    const colTasks = dayTasks.filter(t => (t.estado||'pendiente') === col.key);
+    const cards = colTasks.map(t => {
+      let btns = '';
+      const isPending = col.key==='pendiente', isInProg=col.key==='en_progreso';
+      if (isPending) btns = `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)">▶ Iniciar</button>`;
+      if (isInProg)  btns = `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)">📤 Revisión</button>
+        <button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','pendiente');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)" style="color:var(--text3);">↩</button>`;
+      if (col.key==='en_publicacion') btns = `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)">✅ Publicado</button>`;
+      return `<div class="kanban-card">
+        <div class="kanban-card-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        <div class="kanban-card-meta">
+          <span>${t.prioridad||'media'}</span>
+          ${t.ventures?`<span>${t.ventures.emoji} ${escapeHtml(t.ventures.nombre)}</span>`:''}
+        </div>
+        ${btns ? `<div class="kanban-card-actions">${btns}</div>` : ''}
+      </div>`;
+    }).join('') || '<div class="kanban-empty">—</div>';
+    return `<div class="kanban-col" style="border-top:3px solid ${col.color};">
+      <div class="kanban-col-header"><span>${col.label}</span><span class="kanban-count">${colTasks.length}</span></div>
+      <div class="kanban-col-body">${cards}</div>
+    </div>`;
+  }).join('');
+
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text);text-transform:capitalize;">${escapeHtml(label)}</div>
+      <button class="kanban-action-btn" onclick="document.getElementById('exec-day-panel').style.display='none'">✕ Cerrar</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:8px;overflow-x:auto;">${cols}</div>
+  `;
+  panel.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+  const days = Array.from({length: 7}, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return d;
+  });
+
   const todayStr = new Date().toISOString().slice(0, 10);
   const hoyBtn = document.getElementById('mi-horario-hoy-btn');
   if (hoyBtn) hoyBtn.style.display = miHorarioOffset !== 0 ? '' : 'none';
@@ -4114,7 +4249,7 @@ async function loadRoleAccess(profile) {
 }
 
 function getAllowedPagesByRole() {
-  if (currentUserRole === 'executor') return ['tareas', 'mi-horario'];
+  if (currentUserRole === 'executor') return ['tareas', 'mi-horario', 'ventures'];
   if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'notas', 'calendario', 'horarios'];
   return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo', 'calendario', 'horarios'];
 }
@@ -4126,8 +4261,21 @@ function applyRoleVisibility() {
     el.classList.toggle('is-hidden', !allowedPages.has(page));
   });
 
+  // Ocultar botón + Nueva tarea para executor (no se asigna tareas)
+  const newTaskBtn = document.querySelector('#page-tareas .btn.btn-primary-sm');
+  if (newTaskBtn) newTaskBtn.style.display = currentUserRole === 'executor' ? 'none' : '';
+
+  // Renombrar "Mi Horario" → "Calendario" en el sidebar para executor
+  const miHorarioSidebarItem = document.querySelector('.sidebar-item[data-page="mi-horario"]');
+  if (miHorarioSidebarItem) {
+    const icon = miHorarioSidebarItem.querySelector('.sidebar-icon');
+    miHorarioSidebarItem.textContent = currentUserRole === 'executor' ? 'Calendario' : 'Mi Horario';
+    if (icon) miHorarioSidebarItem.prepend(icon);
+  }
+
+  // Mostrar ventures en sidebar para executor (filtrado por tareas asignadas)
   const venturesSection = document.getElementById('sidebar-ventures-section');
-  if (venturesSection) venturesSection.classList.toggle('is-hidden', currentUserRole === 'executor');
+  if (venturesSection) venturesSection.classList.remove('is-hidden'); // todos los roles ven ventures
 }
 
 function isVentureAllowedForCurrentRole(ventureId) {
@@ -4652,6 +4800,119 @@ function renderTasksPanel() {
     </div>`).join('');
 }
 
+function renderExecutorVentureDetail() {
+  const el = document.getElementById('ventures-detail');
+  const selected = venturesData.find(v => String(v.id) === String(selectedVentureId)) || venturesData[0];
+  if (!selected) return;
+
+  const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[selected.estado] || selected.estado;
+  const metrics = (selected.venture_metrics || []).sort((a,b)=>a.orden-b.orden);
+
+  // Tareas del executor en este venture
+  const vTasks = tasksData.filter(t => String(t.venture_id||'') === String(selected.id));
+  const pendientes  = vTasks.filter(t => t.estado === 'pendiente').length;
+  const enProgreso  = vTasks.filter(t => t.estado === 'en_progreso').length;
+  const enRevision  = vTasks.filter(t => ['en_revision','en_aprobacion','en_publicacion'].includes(t.estado)).length;
+  const completadas = vTasks.filter(t => t.estado === 'completado').length;
+  const total = vTasks.length;
+  const pct = total ? Math.round(completadas / total * 100) : 0;
+
+  const ESTADO_LABEL = { pendiente:'Por hacer', en_progreso:'En progreso', en_revision:'En revisión', en_aprobacion:'En aprobación', en_publicacion:'Por publicar', completado:'Completado' };
+  const ESTADO_COLOR = { pendiente:'var(--text3)', en_progreso:'var(--blue,#60a5fa)', en_revision:'var(--amber,#f59e0b)', en_aprobacion:'var(--purple,#a78bfa)', en_publicacion:'#38bdf8', completado:'var(--green,#4ade80)' };
+  const PRIO_COLOR   = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
+
+  // Sidebar de ventures — chips clicables
+  const ventureChips = venturesData.map(v => {
+    const vt = tasksData.filter(t => String(t.venture_id||'') === String(v.id));
+    if (!vt.length && currentUserRole === 'executor') return ''; // ocultar si no tiene tareas
+    const active = String(v.id) === String(selected.id);
+    return `<div class="sidebar-item ${active?'active':''}" onclick="selectedVentureId='${v.id}';renderVenturesDetail()">
+      <span class="sidebar-icon">${v.emoji}</span>${escapeHtml(v.nombre)}
+      ${vt.length ? `<span class="sidebar-badge">${vt.filter(t=>t.estado!=='completado').length}</span>` : ''}
+    </div>`;
+  }).join('');
+  document.getElementById('sidebar-ventures').innerHTML = ventureChips;
+
+  // Lista de tareas agrupadas por estado
+  const taskRows = vTasks.length ? vTasks.map(t => {
+    const estado = t.estado || 'pendiente';
+    const eColor = ESTADO_COLOR[estado] || 'var(--text3)';
+    const pColor = PRIO_COLOR[t.prioridad] || PRIO_COLOR.media;
+    const isPending = estado === 'pendiente', isInProg = estado === 'en_progreso', isPub = estado === 'en_publicacion';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
+      <div style="width:3px;min-height:36px;border-radius:2px;background:${pColor};flex-shrink:0;"></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;">
+          <span style="font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid ${eColor};color:${eColor};">${ESTADO_LABEL[estado]||estado}</span>
+          <span style="font-size:9px;color:var(--text3);">${t.prioridad||'media'}</span>
+          ${t.fecha_limite?`<span style="font-size:9px;color:var(--text3);">📅 ${escapeHtml(formatDate(t.fecha_limite))}</span>`:''}
+        </div>
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0;">
+        ${isPending ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso')">▶ Iniciar</button>` : ''}
+        ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado')">📤 Revisión</button>` : ''}
+        ${isPub     ? `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado</button>` : ''}
+      </div>
+    </div>`;
+  }).join('') : `<div class="empty-state"><div class="empty-sub">Sin tareas asignadas en este venture</div></div>`;
+
+  el.innerHTML = `
+    <div class="venture-detail-card">
+      <div class="venture-detail-header">
+        <div class="venture-header-main">
+          <span style="font-size:22px;">${selected.emoji}</span>
+          <div>
+            <div class="venture-title-row">
+              <div style="font-size:14px;font-weight:600;color:var(--text);">${selected.nombre}</div>
+              <span class="status-pill venture-status-mini pill-${selected.estado}">${estadoLabel}</span>
+            </div>
+            <div style="font-size:10px;color:var(--text3);">${selected.nombre_entidad||''} · ${selected.categoria||''}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-secondary btn-dashboard-back" onclick="setPage('tareas')">Volver</button>
+        </div>
+      </div>
+
+      <!-- Métricas del mes -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
+        <div class="kpi-card" style="padding:10px 14px;min-width:100px;">
+          <div class="kpi-value" style="font-size:16px;">${pct}<span style="font-size:10px;">%</span></div>
+          <div class="kpi-label">Completado</div>
+          <div style="height:3px;background:var(--border);border-radius:2px;margin-top:4px;">
+            <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px;"></div>
+          </div>
+        </div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+          <div class="kpi-value" style="font-size:16px;">${pendientes}</div>
+          <div class="kpi-label">Por hacer</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+          <div class="kpi-value" style="font-size:16px;color:var(--blue,#60a5fa);">${enProgreso}</div>
+          <div class="kpi-label">En progreso</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+          <div class="kpi-value" style="font-size:16px;color:var(--amber,#f59e0b);">${enRevision}</div>
+          <div class="kpi-label">En revisión</div>
+        </div>
+        ${metrics.slice(0,3).map(m=>`
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+          <div class="kpi-value" style="font-size:16px;">${escapeHtml(m.valor)}</div>
+          <div class="kpi-label">${escapeHtml(m.nombre)}</div>
+        </div>`).join('')}
+      </div>
+
+      <!-- Lista de tareas -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Mis tareas · ${escapeHtml(selected.nombre)}</div>
+        </div>
+        ${taskRows}
+      </div>
+    </div>`;
+}
+
 function renderVenturesDetail() {
   if (!venturesData.length) {
     document.getElementById('ventures-detail').innerHTML = `<div class="empty-state"><div class="empty-icon">◈</div><div class="empty-text">Sin ventures cargados</div></div>`;
@@ -4660,6 +4921,12 @@ function renderVenturesDetail() {
 
   if (!selectedVentureId || !venturesData.some(v => String(v.id) === String(selectedVentureId))) {
     selectedVentureId = venturesData[0].id;
+  }
+
+  // Vista simplificada para executor
+  if (currentUserRole === 'executor') {
+    renderExecutorVentureDetail();
+    return;
   }
 
   const selected = venturesData.find(v => String(v.id) === String(selectedVentureId)) || venturesData[0];
@@ -4999,9 +5266,7 @@ function renderTareasPage() {
   }
 
   if (currentUserRole === 'executor') {
-    try { renderExecutorBoard(el, filteredTasks); } catch(e) {
-      el.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠</div><div class="empty-text">Error al renderizar (${e.message})</div></div>`;
-    }
+    renderExecutorList(el, filteredTasks);
     return;
   }
 
@@ -5085,6 +5350,56 @@ function renderExecutorCard(task, isActive) {
     </div>`;
 }
 
+function renderExecutorList(el, taskItems) {
+  if (!taskItems.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas asignadas</div></div>`;
+    return;
+  }
+  const ESTADO_LABEL = { pendiente:'Por hacer', en_progreso:'En progreso', en_revision:'En revisión', en_aprobacion:'En aprobación', en_publicacion:'Por publicar', completado:'Completado' };
+  const ESTADO_COLOR = { pendiente:'var(--text3)', en_progreso:'var(--blue,#60a5fa)', en_revision:'var(--amber,#f59e0b)', en_aprobacion:'var(--purple,#a78bfa)', en_publicacion:'#38bdf8', completado:'var(--green,#4ade80)' };
+  const PRIO_COLOR   = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
+
+  // Agrupar por venture
+  const byVenture = {};
+  taskItems.forEach(t => {
+    const key = t.venture_id || '__sin__';
+    if (!byVenture[key]) byVenture[key] = { venture: t.ventures, tasks: [] };
+    byVenture[key].tasks.push(t);
+  });
+
+  el.innerHTML = Object.entries(byVenture).map(([vid, group]) => {
+    const v = group.venture;
+    const vLabel = v ? `${v.emoji} ${escapeHtml(v.nombre)}` : 'Sin venture';
+    const rows = group.tasks.map(t => {
+      const estado = t.estado || 'pendiente';
+      const eColor = ESTADO_COLOR[estado] || 'var(--text3)';
+      const pColor = PRIO_COLOR[t.prioridad] || PRIO_COLOR.media;
+      const isPending = estado === 'pendiente';
+      const isInProg  = estado === 'en_progreso';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
+        <div style="width:3px;min-height:36px;border-radius:2px;background:${pColor};flex-shrink:0;"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;align-items:center;">
+            <span style="font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid ${eColor};color:${eColor};">${ESTADO_LABEL[estado]||estado}</span>
+            <span style="font-size:9px;color:var(--text3);">${t.prioridad||'media'}</span>
+            ${t.fecha_limite ? `<span style="font-size:9px;color:var(--text3);">📅 ${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          ${isPending ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso')">▶ Iniciar</button>` : ''}
+          ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado')">📤 Revisión</button>` : ''}
+          ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','pendiente')" style="color:var(--text3)">↩</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:12px;">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;padding:8px 12px;letter-spacing:.05em;">${vLabel}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
 function renderExecutorBoard(el, taskItems) {
   // Calcular ventures activos hoy
   const todayDow = (() => { const d = new Date().getDay(); return d === 0 ? 7 : d; })();
@@ -5162,18 +5477,23 @@ async function updateTaskState(taskId, nextState, activityText = null) {
 }
 
 async function moveExecutorTask(taskId, nextState) {
-  const inProgressCount = tasksData.filter(t => (t.estado || 'pendiente') === 'en_curso').length;
-  if (nextState === 'en_curso' && inProgressCount >= 2) {
-    alert('Límite WIP: máximo 2 tareas en curso. Entrega o replanifica una primero.');
+  // Mapear estados del tablero personal a estados unificados del kanban
+  const stateMap = { en_curso: 'en_progreso', entregado: 'en_revision', bloqueado: 'pendiente' };
+  const mappedState = stateMap[nextState] || nextState;
+  const inProgressCount = tasksData.filter(t => t.estado === 'en_progreso').length;
+  if (mappedState === 'en_progreso' && inProgressCount >= 3) {
+    alert('Límite WIP: máximo 3 tareas en curso. Envía una a revisión primero.');
+    return;
+  }
+  if (mappedState === 'en_revision') {
+    await kanbanSendToReview(taskId);
     return;
   }
   const labels = {
     pendiente: 'movió una tarea a por hacer',
-    en_curso: 'inició una tarea',
-    bloqueado: 'marcó una tarea como bloqueada',
-    entregado: 'entregó una tarea para revisión'
+    en_progreso: 'inició una tarea'
   };
-  await updateTaskState(taskId, nextState, labels[nextState] || 'actualizó una tarea');
+  await updateTaskState(taskId, mappedState, labels[mappedState] || 'actualizó una tarea');
 }
 
 async function approveDeliveredTask(taskId) {
@@ -7354,7 +7674,7 @@ function setPage(id) {
   document.getElementById('page-'+id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
-  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',calendario:'Calendario',horarios:'Horarios','mi-horario':'Mi Horario'};
+  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',calendario:'Calendario',horarios:'Horarios','mi-horario':(currentUserRole==='executor'?'Calendario':'Mi Horario')};
   // Activar nav-btn por data-page (no por índice — se rompe si hay botones ocultos)
   document.querySelectorAll('.nav-btn[data-page="'+id+'"]').forEach(b=>b.classList.add('active'));
   document.querySelectorAll('.sidebar-item[data-page="'+id+'"]').forEach(b=>b.classList.add('active'));
