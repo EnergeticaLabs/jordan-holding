@@ -4692,8 +4692,24 @@ function renderVenturesDetail() {
     return allowed ? `ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event,'${estado}')"` : '';
   };
 
-  const kanbanHtml = `
-    <div class="venture-section">
+  const kanbanHtml = currentUserRole === 'executor'
+    ? `<div class="venture-section">
+      <div class="venture-kanban">
+        <div class="kanban-col" ${colDrop('en_progreso')}>
+          <div class="kanban-col-header">
+            <span>En progreso</span><span class="kanban-count">${ventureInProgressTasks.length}</span>
+          </div>
+          <div class="kanban-col-body">${renderKanbanCards(ventureInProgressTasks,'en_progreso')}</div>
+        </div>
+        <div class="kanban-col kanban-col-revision" ${colDrop('en_revision')}>
+          <div class="kanban-col-header">
+            <span>🔍 En revisión</span><span class="kanban-count">${ventureRevisionTasks.length}</span>
+          </div>
+          <div class="kanban-col-body">${renderKanbanCards(ventureRevisionTasks,'en_revision')}</div>
+        </div>
+      </div>
+    </div>`
+    : `<div class="venture-section">
       <div class="venture-kanban">
         <div class="kanban-col" ${colDrop('pendiente')}>
           <div class="kanban-col-header">
@@ -4807,10 +4823,13 @@ function renderVenturesDetail() {
         <div class="venture-detail-body">
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text3);margin-bottom:6px;">
             <span>Avance ${selectedProgress}% · ${venturePendingTasks.length} pendientes · ${ventureInProgressTasks.length + ventureRevisionTasks.length + ventureAprobacionTasks.length} en curso</span>
-            ${isOwner ? `<div class="venture-view-toggle">
-              <button class="btn-view-toggle ${ventureTasksView==='lista'?'active':''}" onclick="ventureTasksView='lista';renderVenturesDetail()">Lista</button>
-              <button class="btn-view-toggle ${ventureTasksView==='kanban'?'active':''}" onclick="ventureTasksView='kanban';renderVenturesDetail()">Kanban</button>
-            </div>` : ''}
+            <div style="display:flex;gap:6px;align-items:center;">
+              ${isOwner ? `<button class="btn btn-primary-sm" onclick="openTaskModalForVenture('${selected.id}')">+ Tarea</button>` : ''}
+              ${isOwner ? `<div class="venture-view-toggle">
+                <button class="btn-view-toggle ${ventureTasksView==='lista'?'active':''}" onclick="ventureTasksView='lista';renderVenturesDetail()">Lista</button>
+                <button class="btn-view-toggle ${ventureTasksView==='kanban'?'active':''}" onclick="ventureTasksView='kanban';renderVenturesDetail()">Kanban</button>
+              </div>` : ''}
+            </div>
           </div>
           <div class="progress-bar" style="height:6px;">
             <div class="progress-fill" style="width:${selectedProgress}%"></div>
@@ -7170,6 +7189,12 @@ async function toggleTask(id, el) {
 function openTaskModal() {
   document.getElementById('task-modal').style.display='flex';
   document.getElementById('task-titulo').focus();
+}
+
+function openTaskModalForVenture(ventureId) {
+  openTaskModal();
+  const sel = document.getElementById('task-venture');
+  if (sel && ventureId) sel.value = String(ventureId);
 }
 
 function openDashboardQuickTask() {
