@@ -2222,15 +2222,10 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 
       <!-- MI HORARIO (executor) -->
       <div class="page" id="page-mi-horario">
-        <div class="page-header">
+        <div class="page-header page-header-title-only">
           <div class="page-header-copy">
             <div class="page-title">Mi Horario</div>
             <div class="page-sub" id="mi-horario-sub">Tu semana de trabajo</div>
-          </div>
-          <div class="header-actions" id="mi-horario-nav">
-            <button class="task-action-btn" onclick="miHorarioOffset--;loadMiHorario()">&#8249;</button>
-            <button class="task-action-btn" id="mi-horario-hoy-btn" onclick="miHorarioOffset=0;loadMiHorario()">Hoy</button>
-            <button class="task-action-btn" onclick="miHorarioOffset++;loadMiHorario()">&#8250;</button>
           </div>
         </div>
         <div id="mi-horario-content"></div>
@@ -3131,9 +3126,7 @@ function renderMiHorario() {
   const sub = document.getElementById('mi-horario-sub');
   if (sub) sub.textContent = targetDate.toLocaleDateString('es-PE', {month:'long', year:'numeric'});
 
-  // Botón "Hoy"
-  const hoyBtn = document.getElementById('mi-horario-hoy-btn');
-  if (hoyBtn) hoyBtn.style.display = miHorarioOffset !== 0 ? '' : 'none';
+  // (botón "Hoy" ahora se renderiza inline en el encabezado del mes)
 
   // KPIs (usando tasksProgressData para incluir completadas)
   const doneTasks = tasksProgressData.filter(t => t.estado === 'completado').length;
@@ -3279,7 +3272,12 @@ function renderMiHorario() {
         <div style="font-size:9px;color:var(--text3);">de S/ ${parseFloat(goal.variable_max||0).toFixed(0)}</div>
       </div>` : ''}
     </div>
-    <div style="font-size:12px;font-weight:600;color:var(--text);text-transform:capitalize;margin-bottom:8px;">${targetDate.toLocaleDateString('es-PE',{month:'long',year:'numeric'})}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <button class="task-action-btn" onclick="miHorarioOffset--;loadMiHorario()" style="padding:2px 8px;font-size:16px;line-height:1;">&#8249;</button>
+      <div style="flex:1;font-size:13px;font-weight:700;color:var(--text);text-transform:capitalize;text-align:center;">${targetDate.toLocaleDateString('es-PE',{month:'long',year:'numeric'})}</div>
+      ${miHorarioOffset !== 0 ? `<button class="task-action-btn" onclick="miHorarioOffset=0;loadMiHorario()" style="font-size:10px;padding:2px 6px;">Hoy</button>` : '<span style="width:42px;"></span>'}
+      <button class="task-action-btn" onclick="miHorarioOffset++;loadMiHorario()" style="padding:2px 8px;font-size:16px;line-height:1;">&#8250;</button>
+    </div>
     <div class="cal-month-grid">
       ${headerCells}
       ${dayCells}
