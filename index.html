@@ -2752,10 +2752,30 @@ async function loadPresenceRequests() {
 // ════════════════════════════════════════════════════════════════════════════
 
 const DAYS_LABELS = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const VENTURE_COLORS = ['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4','#f97316','#84cc16','#ec4899','#14b8a6'];
+// Colores fijos por nombre de venture (normalizado, sin tildes ni mayúsculas)
+const VENTURE_COLOR_MAP = [
+  { keys: ['vatio'],                   color: '#f59e0b' }, // ámbar
+  { keys: ['energetica', 'energtica'], color: '#eab308' }, // amarillo
+  { keys: ['fitbase'],                 color: '#F26422' }, // naranja Fitbase
+  { keys: ['elite', 'lite'],           color: '#1c1c1e' }, // negro
+  { keys: ['polimatas', 'polmatas'],   color: '#8b5cf6' }, // violeta
+  { keys: ['ciencia'],                 color: '#0ea5e9' }, // azul científico
+  { keys: ['incomparables'],           color: '#ef4444' }, // rojo
+  { keys: ['jordan'],                  color: '#2271b1' }, // azul Jordan
+];
+const VENTURE_COLORS = ['#f59e0b','#eab308','#F26422','#1c1c1e','#8b5cf6','#0ea5e9','#ef4444','#2271b1','#10b981','#06b6d4'];
 
 function getVentureColor(ventureId) {
-  const idx = venturesData.findIndex(v => v.id === ventureId);
+  if (ventureId) {
+    const v = venturesData.find(vv => String(vv.id) === String(ventureId));
+    if (v) {
+      const norm = v.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      for (const entry of VENTURE_COLOR_MAP) {
+        if (entry.keys.some(k => norm.includes(k))) return entry.color;
+      }
+    }
+  }
+  const idx = venturesData.findIndex(v => String(v.id) === String(ventureId));
   return VENTURE_COLORS[idx >= 0 ? idx % VENTURE_COLORS.length : 0];
 }
 
@@ -3140,6 +3160,43 @@ function renderMiHorario() {
     return d.getFullYear() === year && d.getMonth() === month;
   });
   const monthPending = monthTasks.filter(t => t.estado !== 'completado').length;
+  const monthDone    = monthTasks.filter(t => t.estado === 'completado').length;
+
+  // Estadísticas por venture del mes
+  const vStatsMap = {};
+  monthTasks.forEach(t => {
+    const vid = String(t.venture_id || '__none');
+    if (!vStatsMap[vid]) {
+      const v = venturesData.find(vv => String(vv.id) === String(t.venture_id));
+      vStatsMap[vid] = { v, total: 0, done: 0, color: getVentureColor(t.venture_id) };
+    }
+    vStatsMap[vid].total++;
+    if (t.estado === 'completado') vStatsMap[vid].done++;
+  });
+  const monthStatsHtml = monthTasks.length ? `
+    <div class="panel" style="margin-top:14px;">
+      <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="panel-title">Estadísticas · ${targetDate.toLocaleDateString('es-PE',{month:'long',year:'numeric'})}</div>
+        <div style="font-size:11px;color:var(--text3);">${monthDone}/${monthTasks.length} completadas</div>
+      </div>
+      ${Object.values(vStatsMap).sort((a,b)=>b.total-a.total).map(s => {
+        const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
+        const name = s.v ? escapeHtml(s.v.nombre) : 'Sin venture';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border);">
+          <div style="width:3px;height:30px;border-radius:2px;background:${s.color};flex-shrink:0;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:11px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}</div>
+            <div style="height:3px;background:var(--border);border-radius:2px;margin-top:3px;">
+              <div style="height:100%;width:${pct}%;background:${s.color};border-radius:2px;"></div>
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-size:11px;font-weight:600;color:var(--text);">${pct}%</div>
+            <div style="font-size:9px;color:var(--text3);">${s.done}/${s.total}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : '';
 
   const headerCells = DAY_LABELS.map(d => `<div class="cal-month-header-cell">${d}</div>`).join('');
 
@@ -3225,6 +3282,7 @@ function renderMiHorario() {
       ${headerCells}
       ${dayCells}
     </div>
+    ${monthStatsHtml}
   `;
 }
 
@@ -3259,7 +3317,8 @@ function openExecutorDayPanel(dateStr) {
       if (isInProg)  btns = `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)">📤 Revisión</button>
         <button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','pendiente');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)" style="color:var(--text3);">↩</button>`;
       if (col.key === 'en_publicacion') btns = `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)">✅ Publicado</button>`;
-      return `<div class="kanban-card">
+      const vCardColor = getVentureColor(t.venture_id);
+      return `<div class="kanban-card" style="border-left:3px solid ${vCardColor};">
         <div class="kanban-card-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
         <div class="kanban-card-meta">
           <span style="color:${PRIO_COLOR[t.prioridad]||PRIO_COLOR.media};">${t.prioridad||'media'}</span>
