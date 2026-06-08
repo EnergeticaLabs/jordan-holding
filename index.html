@@ -3179,23 +3179,25 @@ function renderMiHorario() {
         <div class="panel-title">Estadísticas · ${targetDate.toLocaleDateString('es-PE',{month:'long',year:'numeric'})}</div>
         <div style="font-size:11px;color:var(--text3);">${monthDone}/${monthTasks.length} completadas</div>
       </div>
-      ${Object.values(vStatsMap).sort((a,b)=>b.total-a.total).map(s => {
-        const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
-        const name = s.v ? escapeHtml(s.v.nombre) : 'Sin venture';
-        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border);">
-          <div style="width:3px;height:30px;border-radius:2px;background:${s.color};flex-shrink:0;"></div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:11px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}</div>
-            <div style="height:3px;background:var(--border);border-radius:2px;margin-top:3px;">
-              <div style="height:100%;width:${pct}%;background:${s.color};border-radius:2px;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
+        ${Object.values(vStatsMap).sort((a,b)=>b.total-a.total).map(s => {
+          const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
+          const name = s.v ? escapeHtml(s.v.nombre) : 'Sin venture';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border);">
+            <div style="width:3px;height:30px;border-radius:2px;background:${s.color};flex-shrink:0;"></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:11px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}</div>
+              <div style="height:3px;background:var(--border);border-radius:2px;margin-top:3px;">
+                <div style="height:100%;width:${pct}%;background:${s.color};border-radius:2px;"></div>
+              </div>
             </div>
-          </div>
-          <div style="text-align:right;flex-shrink:0;">
-            <div style="font-size:11px;font-weight:600;color:var(--text);">${pct}%</div>
-            <div style="font-size:9px;color:var(--text3);">${s.done}/${s.total}</div>
-          </div>
-        </div>`;
-      }).join('')}
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-size:11px;font-weight:600;color:var(--text);">${pct}%</div>
+              <div style="font-size:9px;color:var(--text3);">${s.done}/${s.total}</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
     </div>` : '';
 
   const headerCells = DAY_LABELS.map(d => `<div class="cal-month-header-cell">${d}</div>`).join('');
