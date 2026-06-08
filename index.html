@@ -4980,14 +4980,14 @@ async function moveTaskInVentureKanban(taskId, nextState) {
 
 function renderTareasPage() {
   const el = document.getElementById('tareas-list');
+  if (!el) return;
   const filteredTasks = getQuickFilteredTasks(tasksData);
   const filterLabel = getQuickFilterLabel();
   const subtitleBase = currentUserRole === 'executor'
     ? `${filteredTasks.length} tareas activas`
     : `${filteredTasks.length} tareas pendientes`;
-  document.getElementById('tareas-sub').textContent = filterLabel
-    ? `${subtitleBase} · filtro: ${filterLabel}`
-    : subtitleBase;
+  const subEl = document.getElementById('tareas-sub');
+  if (subEl) subEl.textContent = filterLabel ? `${subtitleBase} · filtro: ${filterLabel}` : subtitleBase;
 
   if (!filteredTasks.length) {
     el.innerHTML=`<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div><div class="empty-sub">Crea una nueva tarea para comenzar</div></div>`;
@@ -4995,7 +4995,9 @@ function renderTareasPage() {
   }
 
   if (currentUserRole === 'executor') {
-    renderExecutorBoard(el, filteredTasks);
+    try { renderExecutorBoard(el, filteredTasks); } catch(e) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠</div><div class="empty-text">Error al renderizar (${e.message})</div></div>`;
+    }
     return;
   }
 
@@ -5087,8 +5089,10 @@ function renderExecutorBoard(el, taskItems) {
   const hasSchedule = todayBlocks.length > 0;
 
   const isTaskActiveToday = t => {
-    if (!hasSchedule) return true; // sin horario configurado: todo activo
-    if (t.tipo === 'urgente') return true;
+    if (!hasSchedule) return true; // sin horario: todo activo
+    // Si hay al menos un bloque sin venture_id, disponibilidad general → todo activo
+    if (todayBlocks.some(b => !b.venture_id)) return true;
+    // Si todos los bloques tienen venture_id, restringir por venture
     return t.venture_id && todayVentureIds.has(t.venture_id);
   };
 
