@@ -656,35 +656,38 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 /* ══ EXECUTOR MONTH CALENDAR ══ */
 .cal-month-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+  width: 100%;
 }
 .cal-month-header-cell {
   text-align: center;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   color: var(--text3);
-  padding: 4px 0 6px;
+  padding: 3px 0 5px;
 }
 .cal-day-cell {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px;
-  min-height: 64px;
+  border-radius: 5px;
+  padding: 3px 2px;
+  min-height: 52px;
   cursor: default;
   transition: border-color 0.15s;
+  overflow: hidden;
+  min-width: 0;
 }
 .cal-day-cell.has-tasks { cursor: pointer; }
 .cal-day-cell.has-tasks:hover { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
 .cal-day-cell.is-today { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
-.cal-day-cell.other-month { opacity: 0.25; pointer-events: none; }
+.cal-day-cell.other-month { opacity: 0.2; pointer-events: none; }
 .cal-day-cell.is-weekend { background: var(--bg2); }
-.cal-day-num { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.cal-day-num { font-size: 9px; font-weight: 700; color: var(--text); margin-bottom: 2px; text-align: center; }
 .cal-day-cell.is-today .cal-day-num { color: var(--gold); }
 .cal-venture-slot {
-  display: flex; align-items: center; gap: 3px;
-  padding: 1px 4px; border-radius: 3px; margin-bottom: 2px;
+  display: flex; align-items: center; justify-content: space-between; gap: 1px;
+  padding: 1px 2px; border-radius: 2px; margin-bottom: 1px;
   min-width: 0; overflow: hidden;
 }
 /* Venture inline selector */
@@ -3128,7 +3131,7 @@ function renderMiHorario() {
   const totalCells  = Math.ceil((startOffset + totalDays) / 7) * 7;
 
   const PRIO_COLOR = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
-  const DAY_LABELS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const DAY_LABELS = ['L','M','X','J','V','S','D'];
 
   // Tareas del mes (tasksProgressData incluye completadas)
   const monthTasks = tasksProgressData.filter(t => {
@@ -3165,14 +3168,24 @@ function renderMiHorario() {
       }
       ventureGroups[vid].tasks.push(t);
     });
+    // Abreviar nombre de venture a siglas (sin emoji)
+    const abbrev = name => {
+      if (!name) return '?';
+      // Quitar emojis / caracteres no-ASCII
+      const clean = name.replace(/[^\p{L}\p{N}\s]/gu, '').trim();
+      const words = clean.split(/\s+/).filter(Boolean);
+      if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+      return words.map(w => w[0].toUpperCase()).join('').slice(0, 4);
+    };
+
     const ventureSlots = Object.values(ventureGroups).map(g => {
       const v = g.venture;
       const cnt = g.tasks.length;
       const allDone = g.tasks.every(t => t.estado === 'completado');
-      const label = v ? `${v.emoji} ${v.nombre}` : 'Sin venture';
+      const label = v ? abbrev(v.nombre) : '?';
       return `<div class="cal-venture-slot" style="background:${g.color}22;border-left:2px solid ${g.color};opacity:${allDone?.5:1};">
-        <span style="font-size:9px;color:${g.color};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(label)}</span>
-        ${cnt > 1 ? `<span style="font-size:8px;color:${g.color};opacity:.8;flex-shrink:0;">${cnt}</span>` : ''}
+        <span style="font-size:8px;color:${g.color};font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.2;">${escapeHtml(label)}</span>
+        ${cnt > 1 ? `<span style="font-size:7px;color:${g.color};flex-shrink:0;">${cnt}</span>` : ''}
       </div>`;
     }).join('');
 
