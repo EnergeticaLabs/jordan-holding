@@ -1069,7 +1069,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 }
 .venture-kanban {
   display: grid;
-  grid-template-columns: repeat(5, minmax(160px, 1fr));
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
   gap: 10px;
   margin-top: 12px;
   overflow-x: auto;
@@ -1109,9 +1109,30 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .kanban-card:last-child { margin-bottom: 0; }
 .kanban-locked { cursor: not-allowed; opacity: 0.75; }
 .kanban-col { border-top: 3px solid transparent; }
-.kanban-col-revision   { border-top-color: var(--amber, #f59e0b); }
-.kanban-col-aprobacion { border-top-color: var(--purple, #a78bfa); }
-.kanban-col-completado { border-top-color: var(--green, #4ade80); }
+.kanban-col-revision    { border-top-color: var(--amber, #f59e0b); }
+.kanban-col-aprobacion  { border-top-color: var(--purple, #a78bfa); }
+.kanban-col-publicacion { border-top-color: #38bdf8; }
+.kanban-col-completado  { border-top-color: var(--green, #4ade80); }
+.kanban-card-actions {
+  margin-top: 7px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.kanban-action-btn {
+  font-size: 9px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.kanban-action-btn:hover { background: var(--surface3, #2a2a2a); }
+.kanban-action-approve  { border-color: #4ade8066; color: #4ade80; }
+.kanban-action-return   { border-color: #f9731666; color: #f97316; }
+.kanban-action-publish  { border-color: #38bdf866; color: #38bdf8; }
 .kanban-card-title {
   font-size: 11px;
   color: var(--text);
@@ -4654,20 +4675,31 @@ function renderVenturesDetail() {
 
   const renderKanbanCards = (tasks, colEstado) => {
     if (!tasks.length) return `<div class="kanban-empty">Sin tareas</div>`;
-    // Quién puede arrastrar desde esta columna:
-    // pendiente → solo owner
-    // en_progreso → executor, manager, owner
-    // en_revision → manager, owner
-    // en_aprobacion → solo owner
-    // completado → solo owner
-    const colDragAllowed = colEstado === 'pendiente' ? isOwner
-      : colEstado === 'en_progreso' ? true
-      : colEstado === 'en_revision' ? isManager
-      : colEstado === 'en_aprobacion' ? isOwner
-      : isOwner;
+    // Owner puede arrastrar desde cualquier columna
+    // Executor puede arrastrar solo desde pendiente ↔ en_progreso
+    // Manager y executor usan botones para otras transiciones
+    const canDragFromCol = isOwner
+      ? true
+      : currentUserRole === 'executor' && (colEstado === 'pendiente' || colEstado === 'en_progreso');
+
     return tasks.map(t => {
-      const canDrag = colDragAllowed;
+      const canDrag = canDragFromCol;
       const assignee = getAssigneeLabel(t.titulo);
+
+      // Botones de acción según rol + columna
+      let actionBtns = '';
+      if (currentUserRole === 'executor' && colEstado === 'en_progreso') {
+        actionBtns = `<button class="kanban-action-btn" onclick="kanbanSendToReview('${t.id}')">📤 Enviar a revisión</button>`;
+      } else if (currentUserRole === 'executor' && colEstado === 'en_publicacion') {
+        actionBtns = `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado en redes</button>`;
+      } else if (isManager && colEstado === 'en_revision') {
+        actionBtns = `<button class="kanban-action-btn kanban-action-approve" onclick="kanbanManagerApprove('${t.id}')">✓ Aprobar</button><button class="kanban-action-btn kanban-action-return" onclick="kanbanManagerReturn('${t.id}')">↩ Devolver</button>`;
+      } else if (isOwner && colEstado === 'en_aprobacion') {
+        actionBtns = `<button class="kanban-action-btn kanban-action-approve" onclick="kanbanOwnerApprove('${t.id}')">✓ Enviar a publicar</button><button class="kanban-action-btn kanban-action-return" onclick="kanbanOwnerReturn('${t.id}')">↩ Devolver</button>`;
+      } else if (isOwner && colEstado === 'en_publicacion') {
+        actionBtns = `<button class="kanban-action-btn kanban-action-approve" onclick="kanbanOwnerComplete('${t.id}')">✓ Completar</button>`;
+      }
+
       return `
       <div class="kanban-card ${canDrag ? '' : 'kanban-locked'}" ${canDrag ? `draggable="true" ondragstart="onVentureKanbanDragStart(event, '${t.id}')"` : ''}>
         <div class="kanban-card-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
@@ -4676,40 +4708,25 @@ function renderVenturesDetail() {
           ${t.fecha_limite ? `<span>${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
           ${assignee ? `<span>→ ${escapeHtml(assignee)}</span>` : ''}
         </div>
+        ${actionBtns ? `<div class="kanban-card-actions">${actionBtns}</div>` : ''}
       </div>`;
     }).join('');
   };
 
-  // Drop permitido en columna según rol:
-  // pendiente → solo owner | en_progreso → todos | en_revision → executor+manager+owner
-  // en_aprobacion → manager+owner | completado → solo owner
-  const colDrop = (estado, fnStr) => {
-    const allowed = estado === 'pendiente' ? isOwner
-      : estado === 'en_progreso' ? true
-      : estado === 'en_revision' ? true
-      : estado === 'en_aprobacion' ? isManager
-      : isOwner;
+  // Drop permitido: owner puede soltar en cualquier columna
+  // Executor solo puede soltar en pendiente o en_progreso
+  // Manager: sin drag-and-drop (usa botones)
+  const colDrop = (estado) => {
+    const allowed = isOwner
+      ? true
+      : currentUserRole === 'executor' && (estado === 'pendiente' || estado === 'en_progreso');
     return allowed ? `ondragover="onVentureKanbanDragOver(event)" ondrop="onVentureKanbanDrop(event,'${estado}')"` : '';
   };
 
-  const kanbanHtml = currentUserRole === 'executor'
-    ? `<div class="venture-section">
-      <div class="venture-kanban">
-        <div class="kanban-col" ${colDrop('en_progreso')}>
-          <div class="kanban-col-header">
-            <span>En progreso</span><span class="kanban-count">${ventureInProgressTasks.length}</span>
-          </div>
-          <div class="kanban-col-body">${renderKanbanCards(ventureInProgressTasks,'en_progreso')}</div>
-        </div>
-        <div class="kanban-col kanban-col-revision" ${colDrop('en_revision')}>
-          <div class="kanban-col-header">
-            <span>🔍 En revisión</span><span class="kanban-count">${ventureRevisionTasks.length}</span>
-          </div>
-          <div class="kanban-col-body">${renderKanbanCards(ventureRevisionTasks,'en_revision')}</div>
-        </div>
-      </div>
-    </div>`
-    : `<div class="venture-section">
+  const venturePublicacionTasks = ventureBoardTasks.filter(t => t.estado === 'en_publicacion').sort((a,b)=>(PRIO[a.prioridad]??2)-(PRIO[b.prioridad]??2));
+
+  const kanbanHtml = `
+    <div class="venture-section">
       <div class="venture-kanban">
         <div class="kanban-col" ${colDrop('pendiente')}>
           <div class="kanban-col-header">
@@ -4734,6 +4751,12 @@ function renderVenturesDetail() {
             <span>✓? Aprobación</span><span class="kanban-count">${ventureAprobacionTasks.length}</span>
           </div>
           <div class="kanban-col-body">${renderKanbanCards(ventureAprobacionTasks,'en_aprobacion')}</div>
+        </div>
+        <div class="kanban-col kanban-col-publicacion" ${colDrop('en_publicacion')}>
+          <div class="kanban-col-header">
+            <span>📤 Publicación</span><span class="kanban-count">${venturePublicacionTasks.length}</span>
+          </div>
+          <div class="kanban-col-body">${renderKanbanCards(venturePublicacionTasks,'en_publicacion')}</div>
         </div>
         <div class="kanban-col kanban-col-completado" ${colDrop('completado')}>
           <div class="kanban-col-header">
@@ -4841,6 +4864,53 @@ function renderVenturesDetail() {
     </div>`;
 }
 
+// ── KANBAN ACCIONES POR ROL ──────────────────────────────────────
+async function kanbanSendToReview(taskId) {
+  if (!confirm('¿Enviar esta tarea a revisión del supervisor?')) return;
+  await moveTaskInVentureKanban(taskId, 'en_revision');
+}
+async function kanbanMarkPublished(taskId) {
+  if (!confirm('¿Confirmar que el contenido ya fue publicado en las redes correspondientes?')) return;
+  await moveTaskInVentureKanban(taskId, 'completado');
+}
+async function kanbanManagerApprove(taskId) {
+  if (!confirm('¿Aprobar revisión y enviar a aprobación final del owner?')) return;
+  await moveTaskInVentureKanban(taskId, 'en_aprobacion');
+}
+async function kanbanManagerReturn(taskId) {
+  const obs = prompt('Observación para el ejecutor (¿qué debe corregir?):');
+  if (obs === null) return; // canceló
+  await kanbanReturnWithObservation(taskId, 'en_progreso', obs || 'Revisar y corregir');
+}
+async function kanbanOwnerApprove(taskId) {
+  if (!confirm('¿Aprobar contenido y enviarlo a publicación?')) return;
+  await moveTaskInVentureKanban(taskId, 'en_publicacion');
+}
+async function kanbanOwnerReturn(taskId) {
+  const obs = prompt('Observación / motivo de devolución:');
+  if (obs === null) return;
+  await kanbanReturnWithObservation(taskId, 'en_progreso', obs || 'Revisar');
+}
+async function kanbanOwnerComplete(taskId) {
+  if (!confirm('¿Marcar como completado?')) return;
+  await moveTaskInVentureKanban(taskId, 'completado');
+}
+async function kanbanReturnWithObservation(taskId, nextState, obs) {
+  const task = tasksProgressData.find(t => String(t.id) === String(taskId));
+  if (!task) return;
+  const baseTitle = task.titulo.replace(/\s*\[Obs:[^\]]*\]/g, '').trim();
+  const newTitle = obs ? `${baseTitle} [Obs: ${obs}]` : baseTitle;
+  const { error } = await sb.from('tasks').update({ estado: nextState, titulo: newTitle, completado_en: null }).eq('id', taskId);
+  if (error) { alert('Error: ' + error.message); return; }
+  task.titulo = newTitle;
+  task.estado = nextState;
+  task.completado_en = null;
+  renderVenturesDetail();
+  renderTasksPanel();
+  renderTareasPage();
+  loadTasks();
+}
+
 function onVentureKanbanDragStart(event, taskId) {
   if (!event?.dataTransfer) return;
   event.dataTransfer.setData('text/plain', String(taskId));
@@ -4860,14 +4930,13 @@ async function onVentureKanbanDrop(event, nextState) {
 }
 
 async function moveTaskInVentureKanban(taskId, nextState) {
-  const VALID = ['pendiente','en_progreso','en_revision','en_aprobacion','completado'];
+  const VALID = ['pendiente','en_progreso','en_revision','en_aprobacion','en_publicacion','completado'];
   if (!VALID.includes(nextState)) return;
   const current = tasksProgressData.find(t => String(t.id) === String(taskId));
   if (!current || current.estado === nextState) return;
-  // Restricciones por rol
-  if ((nextState === 'pendiente' || current.estado === 'pendiente') && currentUserRole !== 'owner') return;
-  if (nextState === 'en_aprobacion' && !['owner','manager'].includes(currentUserRole)) return;
-  if (nextState === 'completado' && currentUserRole !== 'owner') return;
+  // Restricciones por rol (drag-and-drop — botones tienen sus propias funciones)
+  if (currentUserRole === 'executor' && !['pendiente','en_progreso'].includes(nextState)) return;
+  if (currentUserRole === 'manager' && (nextState === 'pendiente' || nextState === 'completado' || nextState === 'en_publicacion')) return;
 
   // ── OPTIMISTIC UPDATE ─────────────────────────
   const prevEstado = current.estado;
