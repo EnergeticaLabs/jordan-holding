@@ -4634,6 +4634,7 @@ function taskMatchesVentureTag(task, venture) {
 
 function renderTasksPanel() {
   const panel = document.getElementById('tasks-panel');
+  if (!panel) return; // executor no tiene dashboard
   const top = tasksData.slice(0,5);
   if (!top.length) { panel.innerHTML=`<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div></div>`; return; }
   panel.innerHTML = top.map(t=>`
