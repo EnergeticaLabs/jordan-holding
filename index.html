@@ -4985,8 +4985,6 @@ async function moveTaskInVentureKanban(taskId, nextState) {
 function renderTareasPage() {
   const el = document.getElementById('tareas-list');
   if (!el) return;
-  // DEBUG — eliminar después
-  el.innerHTML = `<div style="padding:12px;color:red;font-size:13px;font-weight:bold;">DEBUG renderTareasPage corrió · role=${currentUserRole} · tasksData=${tasksData.length}</div>`;
   const filteredTasks = getQuickFilteredTasks(tasksData);
   const filterLabel = getQuickFilterLabel();
   const subtitleBase = currentUserRole === 'executor'
