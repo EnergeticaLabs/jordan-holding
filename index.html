@@ -1910,6 +1910,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <button class="nav-btn" data-page="tareas" onclick="setPage('tareas')">Tareas</button>
       <button class="nav-btn active" data-page="notas" onclick="setPage('notas')">Notas</button>
       <button class="nav-btn" data-page="equipo" onclick="setPage('equipo')">Equipo</button>
+      <button class="nav-btn" data-page="mi-horario" onclick="setPage('mi-horario')">Mi Horario</button>
     </div>
     <div class="topbar-right">
       <div class="user-chip" onclick="toggleUserMenu()">
@@ -7352,9 +7353,10 @@ function setPage(id) {
   document.getElementById('page-'+id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
-  const idx={dashboard:0,ventures:1,tareas:2,notas:3,equipo:4};
   const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',calendario:'Calendario',horarios:'Horarios','mi-horario':'Mi Horario'};
-  if(idx[id]!==undefined) document.querySelectorAll('.nav-btn')[idx[id]].classList.add('active');
+  // Activar nav-btn por data-page (no por índice — se rompe si hay botones ocultos)
+  document.querySelectorAll('.nav-btn[data-page="'+id+'"]').forEach(b=>b.classList.add('active'));
+  document.querySelectorAll('.sidebar-item[data-page="'+id+'"]').forEach(b=>b.classList.add('active'));
   const activePageLabel = document.getElementById('topbar-active-page');
   if (activePageLabel) activePageLabel.textContent = pageNames[id] || 'Panel';
   if (id !== 'notas') setInboxFocusMode(false);
