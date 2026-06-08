@@ -4250,7 +4250,7 @@ async function loadActivity() {
 
 // ── RENDER ──
 function renderDashboard() {
-  if (!document.getElementById('kpi-ventures')) return; // executor no tiene dashboard
+  if (currentUserRole === 'executor') return; // executor no tiene dashboard
   const total  = venturesData.length;
   const avg    = total ? Math.round(venturesData.reduce((s,v)=>s+getVentureProgress(v),0)/total) : 0;
   const urgentes = tasksData.filter(t=>t.prioridad==='urgente'||t.prioridad==='alta').length;
@@ -4985,6 +4985,8 @@ async function moveTaskInVentureKanban(taskId, nextState) {
 function renderTareasPage() {
   const el = document.getElementById('tareas-list');
   if (!el) return;
+  // DEBUG — eliminar después
+  el.innerHTML = `<div style="padding:12px;color:red;font-size:13px;font-weight:bold;">DEBUG renderTareasPage corrió · role=${currentUserRole} · tasksData=${tasksData.length}</div>`;
   const filteredTasks = getQuickFilteredTasks(tasksData);
   const filterLabel = getQuickFilterLabel();
   const subtitleBase = currentUserRole === 'executor'
