@@ -4204,15 +4204,14 @@ async function loadApp() {
   //    Esto evita el flash de contenido de owner en usuarios con otro rol.
   await loadUserProfile();
 
-  // 2. Mostrar app con el rol ya aplicado — sin flash.
-  document.getElementById('app').classList.add('visible');
+  // 2. Preparar UI (sin mostrar aún para executor — evita flash de "notas").
   loadTaskBriefs();
   hydrateNotesTodayFromCache();
   bindNotesInbox();
   setDate();
 
-  // 3. Para el executor, cargar datos antes de mostrar el calendario (evita parpadeo).
-  //    Para otros roles navegamos primero y cargamos en background.
+  // 3. Para el executor, cargar datos antes de mostrar el app (evita flash de notas).
+  //    Para otros roles mostramos el app y cargamos en background.
   if (currentUserRole === 'executor') {
     await loadVentures();
     await loadTasks();
@@ -4222,6 +4221,9 @@ async function loadApp() {
       .order('day_of_week').order('start_time')
       .then(({ data }) => { scheduleBlocksData = data || []; });
   }
+
+  // Mostrar app (para executor justo antes de navegar — ya tiene datos)
+  document.getElementById('app').classList.add('visible');
 
   const defaultPageByRole = {
     owner: 'notas',
