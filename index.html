@@ -4211,8 +4211,18 @@ async function loadApp() {
   bindNotesInbox();
   setDate();
 
-  // 3. Navegar inmediatamente a la página correcta con datos de caché.
-  //    El usuario ve contenido sin esperar las cargas remotas.
+  // 3. Para el executor, cargar datos antes de mostrar el calendario (evita parpadeo).
+  //    Para otros roles navegamos primero y cargamos en background.
+  if (currentUserRole === 'executor') {
+    await loadVentures();
+    await loadTasks();
+    loadGoals();
+    sb.from('work_schedule_blocks').select('*, ventures(nombre,emoji)')
+      .eq('user_id', currentProfileId).eq('active', true)
+      .order('day_of_week').order('start_time')
+      .then(({ data }) => { scheduleBlocksData = data || []; });
+  }
+
   const defaultPageByRole = {
     owner: 'notas',
     manager: 'dashboard',
@@ -4222,22 +4232,17 @@ async function loadApp() {
 
   // 4. Cargar datos remotos en segundo plano y re-renderizar al terminar.
   loadNotesToday();
-  await loadVentures();
-  await Promise.all([loadTasks(), loadActivity(), loadUsers()]);
+  if (currentUserRole !== 'executor') {
+    await loadVentures();
+    await Promise.all([loadTasks(), loadActivity(), loadUsers()]);
+  } else {
+    await Promise.all([loadActivity(), loadUsers()]);
+  }
   renderDashboard();
   renderTasksPanel();
   renderTareasPage();
-  // Re-renderizar calendario del executor una vez que los datos están listos
-  if (currentUserRole === 'executor') renderMiHorario();
-  // Chequear GCal en background para el sidebar
-  if (currentUserRole === 'owner') checkGcalConnection();
-  // Cargar datos de horarios y objetivos en background
-  loadGoals();
-  if (currentUserRole === 'executor' && currentProfileId) {
-    sb.from('work_schedule_blocks').select('*, ventures(nombre,emoji)')
-      .eq('user_id', currentProfileId).eq('active', true)
-      .order('day_of_week').order('start_time')
-      .then(({ data }) => { scheduleBlocksData = data || []; });
+  if (currentUserRole !== 'executor') {
+    loadGoals();
   }
 
   // Notificaciones de retorno OAuth
