@@ -5107,8 +5107,95 @@ function renderExecutorVentureDetail() {
 
 async function switchExecVentureTab(tab, ventureId) {
   window._execVentureTab = tab;
-  if (tab === 'pub') await loadVenturePubSchedule(ventureId);
-  renderExecutorVentureDetail();
+
+  // Actualizar estilos de botones de pestaña sin re-renderizar todo
+  ['tareas','info','pub'].forEach(t => {
+    const btn = document.querySelector(`[onclick="switchExecVentureTab('${t}','${ventureId}')"]`);
+    if (!btn) return;
+    const active = t === tab;
+    btn.style.color = active ? 'var(--text)' : 'var(--text3)';
+    btn.style.borderBottomColor = active ? 'var(--gold)' : 'transparent';
+  });
+
+  const contentEl = document.getElementById('exec-venture-tab-content');
+  if (!contentEl) { renderExecutorVentureDetail(); return; }
+
+  // Solo cargar publicaciones si no están cacheadas aún para este venture
+  if (tab === 'pub' && !venturePubSchedule[ventureId]) {
+    await loadVenturePubSchedule(ventureId);
+  }
+
+  // Inyectar solo el contenido interno sin tocar el resto de la tarjeta
+  const selected = venturesData.find(v => String(v.id) === String(ventureId));
+  if (!selected) return;
+
+  const vTasks = tasksData.filter(t => String(t.venture_id||'') === String(selected.id));
+  const pendientes  = vTasks.filter(t => t.estado === 'pendiente').length;
+  const enProgreso  = vTasks.filter(t => t.estado === 'en_progreso').length;
+  const enRevision  = vTasks.filter(t => ['en_revision','en_aprobacion','en_publicacion'].includes(t.estado)).length;
+  const completadas = vTasks.filter(t => t.estado === 'completado').length;
+  const total = vTasks.length;
+  const pct = total ? Math.round(completadas / total * 100) : 0;
+  const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[selected.estado] || selected.estado;
+  const ESTADO_LABEL = { pendiente:'Por hacer', en_progreso:'En progreso', en_revision:'En revisión', en_aprobacion:'En aprobación', en_publicacion:'Por publicar', completado:'Completado' };
+  const ESTADO_COLOR = { pendiente:'var(--text3)', en_progreso:'var(--blue,#60a5fa)', en_revision:'var(--amber,#f59e0b)', en_aprobacion:'var(--purple,#a78bfa)', en_publicacion:'#38bdf8', completado:'var(--green,#4ade80)' };
+  const PRIO_COLOR   = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
+  const taskRows = vTasks.length ? vTasks.map(t => {
+    const estado = t.estado || 'pendiente';
+    const eColor = ESTADO_COLOR[estado] || 'var(--text3)';
+    const pColor = PRIO_COLOR[t.prioridad] || PRIO_COLOR.media;
+    const isPending = estado === 'pendiente', isInProg = estado === 'en_progreso', isPub = estado === 'en_publicacion';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
+      <div style="width:3px;min-height:36px;border-radius:2px;background:${pColor};flex-shrink:0;"></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;">
+          <span style="font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid ${eColor};color:${eColor};">${ESTADO_LABEL[estado]||estado}</span>
+          <span style="font-size:9px;color:var(--text3);">${t.prioridad||'media'}</span>
+          ${t.fecha_limite?`<span style="font-size:9px;color:var(--text3);">📅 ${escapeHtml(formatDate(t.fecha_limite))}</span>`:''}
+        </div>
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0;">
+        ${isPending ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso')">▶ Iniciar</button>` : ''}
+        ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado')">📤 Revisión</button>` : ''}
+        ${isPub     ? `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado</button>` : ''}
+      </div>
+    </div>`;
+  }).join('') : `<div class="empty-state"><div class="empty-sub">Sin tareas asignadas en este venture</div></div>`;
+
+  if (tab === 'tareas') {
+    contentEl.innerHTML = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;"><div class="kpi-value" style="font-size:16px;">${pendientes}</div><div class="kpi-label">Por hacer</div></div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;"><div class="kpi-value" style="font-size:16px;color:var(--blue,#60a5fa);">${enProgreso}</div><div class="kpi-label">En progreso</div></div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;"><div class="kpi-value" style="font-size:16px;color:var(--amber,#f59e0b);">${enRevision}</div><div class="kpi-label">En revisión</div></div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;"><div class="kpi-value" style="font-size:16px;color:#38bdf8;">${vTasks.filter(t=>t.estado==='en_publicacion').length}</div><div class="kpi-label">Por publicar</div></div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;"><div class="kpi-value" style="font-size:16px;color:var(--green,#4ade80);">${completadas}</div><div class="kpi-label">Completadas</div></div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:100px;">
+          <div class="kpi-value" style="font-size:16px;">${pct}<span style="font-size:10px;">%</span></div>
+          <div class="kpi-label">Completado</div>
+          <div style="height:3px;background:var(--border);border-radius:2px;margin-top:4px;"><div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px;"></div></div>
+        </div>
+      </div>
+      <div class="panel" style="margin:0;">
+        <div class="panel-header"><div class="panel-title">Mis tareas · ${escapeHtml(selected.nombre)}</div></div>
+        ${taskRows}
+      </div>`;
+  } else if (tab === 'info') {
+    contentEl.innerHTML = `<div>
+      ${selected.descripcion
+        ? `<p style="font-size:13px;line-height:1.6;color:var(--text);white-space:pre-wrap;margin:0 0 16px;">${escapeHtml(selected.descripcion)}</p>`
+        : `<div style="font-size:12px;color:var(--text3);">Sin descripción disponible</div>`}
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;border-top:1px solid var(--border);padding-top:12px;">
+        <div style="display:flex;gap:10px;font-size:12px;"><span style="color:var(--text3);width:90px;flex-shrink:0;">Entidad</span><span style="color:var(--text);">${escapeHtml(selected.nombre_entidad||'—')}</span></div>
+        <div style="display:flex;gap:10px;font-size:12px;"><span style="color:var(--text3);width:90px;flex-shrink:0;">Categoría</span><span style="color:var(--text);">${escapeHtml(selected.categoria||'—')}</span></div>
+        <div style="display:flex;gap:10px;font-size:12px;"><span style="color:var(--text3);width:90px;flex-shrink:0;">Estado</span><span class="status-pill pill-${selected.estado}" style="font-size:10px;">${estadoLabel}</span></div>
+        <div style="display:flex;gap:10px;font-size:12px;"><span style="color:var(--text3);width:90px;flex-shrink:0;">Avance</span><span style="color:var(--text);">${selected.avance || 0}%</span></div>
+      </div>
+    </div>`;
+  } else if (tab === 'pub') {
+    contentEl.innerHTML = renderPubScheduleTab(selected.id);
+  }
 }
 
 function renderVenturesDetail() {
