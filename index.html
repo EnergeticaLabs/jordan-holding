@@ -1958,7 +1958,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <button class="nav-btn" data-page="tareas" onclick="setPage('tareas')">Tareas</button>
       <button class="nav-btn active" data-page="notas" onclick="setPage('notas')">Notas</button>
       <button class="nav-btn" data-page="equipo" onclick="setPage('equipo')">Equipo</button>
-      <button class="nav-btn" data-page="mi-horario" onclick="setPage('mi-horario')">Mi Horario</button>
+      <button class="nav-btn" data-page="mi-horario" onclick="setPage('mi-horario')">Tareas</button>
     </div>
     <div class="topbar-right">
       <div class="user-chip" onclick="toggleUserMenu()">
@@ -2004,7 +2004,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
           <span class="sidebar-icon">▦</span>Calendario
         </div>
         <div class="sidebar-item" data-page="mi-horario" onclick="setPage('mi-horario');closeSidebar()">
-          <span class="sidebar-icon">⏱</span>Mi Horario
+          <span class="sidebar-icon">⏱</span>Tareas
+          <span class="sidebar-badge" id="sb-mi-horario">—</span>
         </div>
       </div>
       <div class="sidebar-section" id="sidebar-ventures-section">
@@ -2224,8 +2225,8 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <div class="page" id="page-mi-horario">
         <div class="page-header page-header-title-only">
           <div class="page-header-copy">
-            <div class="page-title">Mi Horario</div>
-            <div class="page-sub" id="mi-horario-sub">Tu semana de trabajo</div>
+            <div class="page-title">Tareas</div>
+            <div class="page-sub" id="mi-horario-sub">Calendario de trabajo</div>
           </div>
         </div>
         <div id="mi-horario-content"></div>
@@ -4324,12 +4325,17 @@ function applyRoleVisibility() {
   const newTaskBtn = document.querySelector('#page-tareas .btn.btn-primary-sm');
   if (newTaskBtn) newTaskBtn.style.display = currentUserRole === 'executor' ? 'none' : '';
 
-  // Renombrar "Mi Horario" → "Calendario" en el sidebar para executor
+  // Renombrar segn rol y actualizar badge de pendientes
   const miHorarioSidebarItem = document.querySelector('.sidebar-item[data-page="mi-horario"]');
   if (miHorarioSidebarItem) {
     const icon = miHorarioSidebarItem.querySelector('.sidebar-icon');
-    miHorarioSidebarItem.textContent = currentUserRole === 'executor' ? 'Calendario' : 'Mi Horario';
-    if (icon) miHorarioSidebarItem.prepend(icon);
+    const badge = miHorarioSidebarItem.querySelector('#sb-mi-horario');
+    if (currentUserRole === 'executor') {
+      miHorarioSidebarItem.childNodes.forEach(n => { if (n.nodeType === 3) n.textContent = 'Tareas'; });
+      if (badge) badge.textContent = tasksData.filter(t => t.estado !== 'completado').length || '—';
+    } else {
+      miHorarioSidebarItem.childNodes.forEach(n => { if (n.nodeType === 3) n.textContent = 'Mi Horario'; });
+    }
   }
 
   // Mostrar ventures en sidebar para executor (filtrado por tareas asignadas)
@@ -4929,7 +4935,6 @@ function renderExecutorVentureDetail() {
   }).join('') : `<div class="empty-state"><div class="empty-sub">Sin tareas asignadas en este venture</div></div>`;
 
   el.innerHTML = `
-    <div class="venture-selector-bar">${inlineChips}</div>
     <div class="venture-detail-card">
       <div class="venture-detail-header">
         <div class="venture-header-main">
@@ -4969,13 +4974,6 @@ function renderExecutorVentureDetail() {
           <div class="kpi-value" style="font-size:16px;">${escapeHtml(m.valor)}</div>
           <div class="kpi-label">${escapeHtml(m.nombre)}</div>
         </div>`).join('')}
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title">Mis tareas · ${escapeHtml(selected.nombre)}</div>
-        </div>
-        ${taskRows}
       </div>
     </div>`;
 }
@@ -7741,7 +7739,7 @@ function setPage(id) {
   document.getElementById('page-'+id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
-  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',calendario:'Calendario',horarios:'Horarios','mi-horario':(currentUserRole==='executor'?'Calendario':'Mi Horario')};
+  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',calendario:'Calendario',horarios:'Horarios','mi-horario':(currentUserRole==='executor'?'Tareas':'Mi Horario')};
   // Activar nav-btn por data-page (no por índice — se rompe si hay botones ocultos)
   document.querySelectorAll('.nav-btn[data-page="'+id+'"]').forEach(b=>b.classList.add('active'));
   document.querySelectorAll('.sidebar-item[data-page="'+id+'"]').forEach(b=>b.classList.add('active'));
