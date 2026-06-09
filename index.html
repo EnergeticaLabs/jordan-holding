@@ -2004,8 +2004,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
           <span class="sidebar-icon">▦</span>Calendario
         </div>
         <div class="sidebar-item" data-page="mi-horario" onclick="setPage('mi-horario');closeSidebar()">
-          <span class="sidebar-icon">✓</span>Mi Horario
-          <span class="sidebar-badge" id="sb-mi-horario"></span>
+          <span class="sidebar-icon">⏱</span>Mi Horario
         </div>
       </div>
       <div class="sidebar-section" id="sidebar-ventures-section">
@@ -4217,7 +4216,7 @@ async function loadApp() {
   const defaultPageByRole = {
     owner: 'notas',
     manager: 'dashboard',
-    executor: 'mi-horario'
+    executor: 'tareas'
   };
   setPage(defaultPageByRole[currentUserRole] || 'notas');
 
@@ -4329,20 +4328,12 @@ function applyRoleVisibility() {
   const tareasSidebarItem = document.querySelector('.sidebar-item[data-page="tareas"]');
   if (tareasSidebarItem) tareasSidebarItem.style.display = currentUserRole === 'executor' ? 'none' : '';
 
-  // Renombrar "Mi Horario" → "Tareas" para executor, con badge de pendientes
+  // Renombrar "Mi Horario" → "Calendario" en el sidebar para executor
   const miHorarioSidebarItem = document.querySelector('.sidebar-item[data-page="mi-horario"]');
   if (miHorarioSidebarItem) {
     const icon = miHorarioSidebarItem.querySelector('.sidebar-icon');
-    const badge = document.getElementById('sb-mi-horario');
-    if (currentUserRole === 'executor') {
-      icon.textContent = '✓';
-      miHorarioSidebarItem.childNodes.forEach(n => { if (n.nodeType === 3) n.textContent = 'Tareas'; });
-      if (badge) badge.textContent = tasksData.filter(t => t.estado !== 'completado').length || '';
-    } else {
-      icon.textContent = '⏱';
-      miHorarioSidebarItem.childNodes.forEach(n => { if (n.nodeType === 3) n.textContent = 'Mi Horario'; });
-      if (badge) badge.textContent = '';
-    }
+    miHorarioSidebarItem.textContent = currentUserRole === 'executor' ? 'Calendario' : 'Mi Horario';
+    if (icon) miHorarioSidebarItem.prepend(icon);
   }
 
   // Mostrar ventures en sidebar para executor (filtrado por tareas asignadas)
