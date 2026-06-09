@@ -2349,6 +2349,12 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <label class="form-label">Fecha límite</label>
       <input type="date" class="form-input" id="task-fecha">
     </div>
+    <div class="form-group" id="task-parent-group">
+      <label class="form-label">Subtarea de (opcional)</label>
+      <select class="form-input" id="task-parent">
+        <option value="">— Tarea independiente —</option>
+      </select>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeTaskModal()">Cancelar</button>
       <button class="btn-save" onclick="saveTask()">Guardar tarea</button>
@@ -2389,9 +2395,13 @@ select.form-input option { background: var(--surface2); color: var(--text); }
       <label class="form-label">Evidencia requerida</label>
       <input type="text" class="form-input" id="brief-evidencia" placeholder="Ej: link, captura o documento">
     </div>
+    <div class="form-group">
+      <label class="form-label">Instrucciones / Contexto</label>
+      <textarea class="form-input" id="brief-contexto" rows="3" placeholder="Contexto adicional, tono, referencias, restricciones..." style="resize:vertical;"></textarea>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeTaskBriefModal()">Cancelar</button>
-      <button class="btn-save" onclick="saveTaskBriefModal()">Guardar ficha</button>
+      <button class="btn-save" id="brief-save-btn" onclick="saveTaskBriefModal()">Guardar ficha</button>
     </div>
   </div>
 </div>
@@ -5003,16 +5013,22 @@ function renderExecutorVentureDetail() {
   }).filter(Boolean).join('');
   document.getElementById('sidebar-ventures').innerHTML = sidebarChips;
 
-  // Lista de tareas
-  const taskRows = vTasks.length ? vTasks.map(t => {
+  // Lista de tareas con soporte de subtareas y brief
+  const renderVentureTaskRow = (t, isChild = false) => {
     const estado = t.estado || 'pendiente';
     const eColor = ESTADO_COLOR[estado] || 'var(--text3)';
     const pColor = PRIO_COLOR[t.prioridad] || PRIO_COLOR.media;
     const isPending = estado === 'pendiente', isInProg = estado === 'en_progreso', isPub = estado === 'en_publicacion';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
+    const brief = t.brief || taskBriefMap[t.id];
+    const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);${isChild?'margin-left:16px;border-left:2px solid var(--border);':''}">
       <div style="width:3px;min-height:36px;border-radius:2px;background:${pColor};flex-shrink:0;"></div>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:12px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        <div style="display:flex;align-items:center;gap:5px;">
+          ${isChild ? '<span style="font-size:10px;color:var(--text3);">└</span>' : ''}
+          <div style="font-size:12px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+          ${hasBrief ? `<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;flex-shrink:0;" onclick="openTaskBriefModal('${t.id}',true)">Brief</span>` : ''}
+        </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;">
           <span style="font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid ${eColor};color:${eColor};">${ESTADO_LABEL[estado]||estado}</span>
           <span style="font-size:9px;color:var(--text3);">${t.prioridad||'media'}</span>
@@ -5025,7 +5041,13 @@ function renderExecutorVentureDetail() {
         ${isPub     ? `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado</button>` : ''}
       </div>
     </div>`;
-  }).join('') : `<div class="empty-state"><div class="empty-sub">Sin tareas asignadas en este venture</div></div>`;
+  };
+  const vParents  = vTasks.filter(t => !t.parent_task_id);
+  const vChildren = vTasks.filter(t => !!t.parent_task_id);
+  const taskRows = vTasks.length
+    ? vParents.map(p => renderVentureTaskRow(p) + vChildren.filter(c => String(c.parent_task_id)===String(p.id)).map(c => renderVentureTaskRow(c,true)).join('')).join('')
+      + vChildren.filter(c => !vParents.some(p => String(p.id)===String(c.parent_task_id))).map(c => renderVentureTaskRow(c)).join('')
+    : `<div class="empty-state"><div class="empty-sub">Sin tareas asignadas en este venture</div></div>`;
 
   // Estado activo de pestaña
   const activeExecTab = window._execVentureTab || 'tareas';
@@ -5158,28 +5180,41 @@ async function switchExecVentureTab(tab, ventureId) {
   const ESTADO_LABEL = { pendiente:'Por hacer', en_progreso:'En progreso', en_revision:'En revisión', en_aprobacion:'En aprobación', en_publicacion:'Por publicar', completado:'Completado' };
   const ESTADO_COLOR = { pendiente:'var(--text3)', en_progreso:'var(--blue,#60a5fa)', en_revision:'var(--amber,#f59e0b)', en_aprobacion:'var(--purple,#a78bfa)', en_publicacion:'#38bdf8', completado:'var(--green,#4ade80)' };
   const PRIO_COLOR   = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
-  const taskRows = vTasks.length ? vTasks.map(t => {
-    const estado = t.estado || 'pendiente';
-    const eColor = ESTADO_COLOR[estado] || 'var(--text3)';
-    const pColor = PRIO_COLOR[t.prioridad] || PRIO_COLOR.media;
-    const isPending = estado === 'pendiente', isInProg = estado === 'en_progreso', isPub = estado === 'en_publicacion';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
-      <div style="width:3px;min-height:36px;border-radius:2px;background:${pColor};flex-shrink:0;"></div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:12px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;">
-          <span style="font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid ${eColor};color:${eColor};">${ESTADO_LABEL[estado]||estado}</span>
-          <span style="font-size:9px;color:var(--text3);">${t.prioridad||'media'}</span>
-          ${t.fecha_limite?`<span style="font-size:9px;color:var(--text3);">📅 ${escapeHtml(formatDate(t.fecha_limite))}</span>`:''}
+  const taskRows = (() => {
+    if (!vTasks.length) return `<div class="empty-state"><div class="empty-sub">Sin tareas asignadas en este venture</div></div>`;
+    const parents  = vTasks.filter(t => !t.parent_task_id);
+    const children = vTasks.filter(t => !!t.parent_task_id);
+    const renderRow = (t, isChild = false) => {
+      const estado = t.estado || 'pendiente';
+      const eColor = ESTADO_COLOR[estado] || 'var(--text3)';
+      const pColor = PRIO_COLOR[t.prioridad] || PRIO_COLOR.media;
+      const isPending = estado === 'pendiente', isInProg = estado === 'en_progreso', isPub = estado === 'en_publicacion';
+      const brief = t.brief || taskBriefMap[t.id];
+      const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);${isChild?'margin-left:16px;border-left:2px solid var(--border);':''}">
+        <div style="width:3px;min-height:36px;border-radius:2px;background:${pColor};flex-shrink:0;"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:5px;">
+            ${isChild ? '<span style="font-size:10px;color:var(--text3);">└</span>' : ''}
+            <div style="font-size:12px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+            ${hasBrief ? `<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;flex-shrink:0;" onclick="openTaskBriefModal('${t.id}',true)">Brief</span>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;">
+            <span style="font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid ${eColor};color:${eColor};">${ESTADO_LABEL[estado]||estado}</span>
+            <span style="font-size:9px;color:var(--text3);">${t.prioridad||'media'}</span>
+            ${t.fecha_limite?`<span style="font-size:9px;color:var(--text3);">📅 ${escapeHtml(formatDate(t.fecha_limite))}</span>`:''}
+          </div>
         </div>
-      </div>
-      <div style="display:flex;gap:4px;flex-shrink:0;">
-        ${isPending ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso')">▶ Iniciar</button>` : ''}
-        ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado')">📤 Revisión</button>` : ''}
-        ${isPub     ? `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado</button>` : ''}
-      </div>
-    </div>`;
-  }).join('') : `<div class="empty-state"><div class="empty-sub">Sin tareas asignadas en este venture</div></div>`;
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          ${isPending ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso')">▶ Iniciar</button>` : ''}
+          ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado')">📤 Revisión</button>` : ''}
+          ${isPub     ? `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado</button>` : ''}
+        </div>
+      </div>`;
+    };
+    return parents.map(p => renderRow(p) + children.filter(c => String(c.parent_task_id)===String(p.id)).map(c => renderRow(c,true)).join('')).join('')
+      + children.filter(c => !parents.some(p => String(p.id)===String(c.parent_task_id))).map(c => renderRow(c)).join('');
+  })();
 
   if (tab === 'tareas') {
     contentEl.innerHTML = `
@@ -5578,21 +5613,39 @@ function renderTareasPage() {
     return;
   }
 
-  el.innerHTML=`<div class="panel"><div class="panel-body">${filteredTasks.map(t=>`
-    <div class="task-item">
+  // Agrupar: tareas padre y sus subtareas
+  const parentTasks = filteredTasks.filter(t => !t.parent_task_id);
+  const childrenOf  = id => filteredTasks.filter(t => String(t.parent_task_id||'') === String(id));
+
+  const renderTaskRow = (t, isChild = false) => {
+    const brief = t.brief || getTaskBrief(t.id);
+    const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
+    const children = childrenOf(t.id);
+    return `
+    <div class="task-item" style="${isChild ? 'margin-left:20px;border-left:2px solid var(--border);padding-left:8px;' : ''}">
       <div class="task-check" onclick="toggleTask('${t.id}',this)"></div>
       <div class="task-content">
-        <div class="task-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="task-title" style="flex:1;">${isChild ? '<span style="color:var(--text3);font-size:10px;">└ </span>' : ''}${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+          ${hasBrief ? `<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;" onclick="openTaskBriefModal('${t.id}')">Brief</span>` : ''}
+          ${!isChild ? `<button class="task-action-btn" style="font-size:9px;padding:1px 6px;" onclick="openTaskBriefModal('${t.id}')">📋</button>` : ''}
+          ${!isChild ? `<button class="task-action-btn" style="font-size:9px;padding:1px 6px;" onclick="openTaskModalForParent('${t.id}')">+ Sub</button>` : ''}
+        </div>
         <div class="task-meta">
           <div class="priority-dot p-${t.prioridad}"></div>
           <span>${t.prioridad.charAt(0).toUpperCase()+t.prioridad.slice(1)}</span>
           <span class="task-state-chip state-${escapeHtml(t.estado || 'pendiente')}">${escapeHtml(getTaskStateLabel(t.estado || 'pendiente'))}</span>
           ${t.ventures?`<span class="task-venture-tag">${t.ventures.emoji} ${t.ventures.nombre}</span>`:'<span class="task-venture-tag">Sin venture</span>'}
           ${t.fecha_limite?`<span>📅 ${formatDate(t.fecha_limite)}</span>`:''}
+          ${children.length ? `<span style="font-size:9px;color:var(--text3);">◆ ${children.length} subtarea${children.length>1?'s':''}</span>` : ''}
         </div>
         ${renderSupervisorTaskActions(t)}
       </div>
-    </div>`).join('')}</div></div>`;
+    </div>
+    ${children.map(c => renderTaskRow(c, true)).join('')}`;
+  };
+
+  el.innerHTML=`<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
 }
 
 function getTaskStateLabel(state) {
@@ -5675,35 +5728,51 @@ function renderExecutorList(el, taskItems) {
     byVenture[key].tasks.push(t);
   });
 
+  const renderRow = (t, isChild = false) => {
+    const estado = t.estado || 'pendiente';
+    const eColor = ESTADO_COLOR[estado] || 'var(--text3)';
+    const pColor = PRIO_COLOR[t.prioridad] || PRIO_COLOR.media;
+    const isPending = estado === 'pendiente';
+    const isInProg  = estado === 'en_progreso';
+    const brief = t.brief || taskBriefMap[t.id];
+    const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);${isChild?'margin-left:16px;border-left:2px solid var(--border);':''}">
+      <div style="width:3px;min-height:36px;border-radius:2px;background:${pColor};flex-shrink:0;"></div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:5px;">
+          ${isChild ? '<span style="font-size:10px;color:var(--text3);">└</span>' : ''}
+          <div style="font-size:12px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+          ${hasBrief ? `<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;flex-shrink:0;" onclick="openTaskBriefModal('${t.id}',true)">Brief</span>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;align-items:center;">
+          <span style="font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid ${eColor};color:${eColor};">${ESTADO_LABEL[estado]||estado}</span>
+          <span style="font-size:9px;color:var(--text3);">${t.prioridad||'media'}</span>
+          ${t.fecha_limite ? `<span style="font-size:9px;color:var(--text3);">📅 ${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0;">
+        ${isPending ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso')">▶ Iniciar</button>` : ''}
+        ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado')">📤 Revisión</button>` : ''}
+        ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','pendiente')" style="color:var(--text3)">↩</button>` : ''}
+      </div>
+    </div>`;
+  };
+
   el.innerHTML = Object.entries(byVenture).map(([vid, group]) => {
     const v = group.venture;
     const vLabel = v ? `${v.emoji} ${escapeHtml(v.nombre)}` : 'Sin venture';
-    const rows = group.tasks.map(t => {
-      const estado = t.estado || 'pendiente';
-      const eColor = ESTADO_COLOR[estado] || 'var(--text3)';
-      const pColor = PRIO_COLOR[t.prioridad] || PRIO_COLOR.media;
-      const isPending = estado === 'pendiente';
-      const isInProg  = estado === 'en_progreso';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
-        <div style="width:3px;min-height:36px;border-radius:2px;background:${pColor};flex-shrink:0;"></div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:12px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;align-items:center;">
-            <span style="font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid ${eColor};color:${eColor};">${ESTADO_LABEL[estado]||estado}</span>
-            <span style="font-size:9px;color:var(--text3);">${t.prioridad||'media'}</span>
-            ${t.fecha_limite ? `<span style="font-size:9px;color:var(--text3);">📅 ${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
-          </div>
-        </div>
-        <div style="display:flex;gap:4px;flex-shrink:0;">
-          ${isPending ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso')">▶ Iniciar</button>` : ''}
-          ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado')">📤 Revisión</button>` : ''}
-          ${isInProg  ? `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','pendiente')" style="color:var(--text3)">↩</button>` : ''}
-        </div>
-      </div>`;
+    // Separar padres y subtareas dentro del grupo
+    const parents  = group.tasks.filter(t => !t.parent_task_id);
+    const children = group.tasks.filter(t => !!t.parent_task_id);
+    const rows = parents.map(t => {
+      const kids = children.filter(c => String(c.parent_task_id) === String(t.id));
+      return renderRow(t) + kids.map(c => renderRow(c, true)).join('');
     }).join('');
+    // Subtareas cuyo padre no está en este grupo (raro, pero posible)
+    const orphanChildren = children.filter(c => !parents.some(p => String(p.id) === String(c.parent_task_id)));
     return `<div style="margin-bottom:12px;">
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;padding:8px 12px;letter-spacing:.05em;">${vLabel}</div>
-      ${rows}
+      ${rows}${orphanChildren.map(c => renderRow(c)).join('')}
     </div>`;
   }).join('');
 }
@@ -7364,28 +7433,42 @@ function renderNotesToday() {
   }).join('');
 }
 
-function openTaskBriefModal(taskId) {
+function openTaskBriefModal(taskId, readOnly = false) {
   activeTaskBriefTaskId = String(taskId || '');
-  const brief = getTaskBrief(activeTaskBriefTaskId) || {};
+  // Buscar en tasksData primero (fuente de verdad), luego notesTodayData
+  const task = tasksData.find(t => String(t.id) === activeTaskBriefTaskId)
+             || notesTodayData.find(t => String(t.id) === activeTaskBriefTaskId);
+  // El brief puede venir de la DB (task.brief) o del localStorage como fallback
+  const brief = task?.brief || getTaskBrief(activeTaskBriefTaskId) || {};
   const modal = document.getElementById('task-brief-modal');
   if (!modal) return;
 
+  const isExecutor = currentUserRole === 'executor';
+  const isReadOnly = readOnly || isExecutor;
+
   const titleEl = document.getElementById('brief-task-title');
-  const task = notesTodayData.find(t => String(t.id) === activeTaskBriefTaskId);
   if (titleEl) titleEl.textContent = cleanTaskTitle(task?.titulo || 'Tarea');
 
   const ventureEl = document.getElementById('brief-venture');
-  if (ventureEl) ventureEl.value = brief.ventureId || task?.venture_id || '';
+  if (ventureEl) { ventureEl.value = brief.ventureId || task?.venture_id || ''; ventureEl.disabled = isReadOnly; }
   const sel = document.getElementById('brief-responsable');
-  if (sel) sel.value = brief.assigneeId || '';
+  if (sel) { sel.value = brief.assigneeId || ''; sel.disabled = isReadOnly; }
   const dateEl = document.getElementById('brief-fecha');
-  if (dateEl) dateEl.value = brief.commitDate || '';
+  if (dateEl) { dateEl.value = brief.commitDate || task?.fecha_limite?.slice(0,10) || ''; dateEl.disabled = isReadOnly; }
   const delEl = document.getElementById('brief-entregable');
-  if (delEl) delEl.value = brief.deliverable || '';
+  if (delEl) { delEl.value = brief.deliverable || ''; delEl.disabled = isReadOnly; }
   const criEl = document.getElementById('brief-criterio');
-  if (criEl) criEl.value = brief.criteria || '';
+  if (criEl) { criEl.value = brief.criteria || ''; criEl.disabled = isReadOnly; }
   const eviEl = document.getElementById('brief-evidencia');
-  if (eviEl) eviEl.value = brief.evidence || '';
+  if (eviEl) { eviEl.value = brief.evidence || ''; eviEl.disabled = isReadOnly; }
+  const ctxEl = document.getElementById('brief-contexto');
+  if (ctxEl) { ctxEl.value = brief.contexto || ''; ctxEl.disabled = isReadOnly; }
+
+  const saveBtn = document.getElementById('brief-save-btn');
+  if (saveBtn) saveBtn.style.display = isReadOnly ? 'none' : '';
+
+  const titleModal = modal.querySelector('.modal-title');
+  if (titleModal) titleModal.textContent = isReadOnly ? 'Ficha delegable (lectura)' : 'Ficha delegable';
 
   modal.style.display = 'flex';
 }
@@ -7399,45 +7482,49 @@ function closeTaskBriefModal(e) {
 
 async function saveTaskBriefModal() {
   if (!activeTaskBriefTaskId) return;
-  const task = notesTodayData.find(t => String(t.id) === String(activeTaskBriefTaskId));
+  // Buscar en tasksData y notesTodayData
+  const task = tasksData.find(t => String(t.id) === String(activeTaskBriefTaskId))
+             || notesTodayData.find(t => String(t.id) === String(activeTaskBriefTaskId));
   if (!task) { closeTaskBriefModal(); return; }
 
-  const ventureId = document.getElementById('brief-venture')?.value || '';
+  const ventureId  = document.getElementById('brief-venture')?.value || '';
   const assigneeId = document.getElementById('brief-responsable')?.value || '';
   const commitDate = document.getElementById('brief-fecha')?.value || '';
   const deliverable = String(document.getElementById('brief-entregable')?.value || '').trim();
-  const criteria = String(document.getElementById('brief-criterio')?.value || '').trim();
-  const evidence = String(document.getElementById('brief-evidencia')?.value || '').trim();
+  const criteria   = String(document.getElementById('brief-criterio')?.value || '').trim();
+  const evidence   = String(document.getElementById('brief-evidencia')?.value || '').trim();
+  const contexto   = String(document.getElementById('brief-contexto')?.value || '').trim();
 
-  const brief = { ventureId, assigneeId, commitDate, deliverable, criteria, evidence };
+  const brief = { ventureId, assigneeId, commitDate, deliverable, criteria, evidence, contexto };
   const hasValues = Object.values(brief).some(v => String(v || '').trim());
-  if (hasValues) {
-    taskBriefMap[String(activeTaskBriefTaskId)] = brief;
-  } else {
-    delete taskBriefMap[String(activeTaskBriefTaskId)];
-  }
+
+  // Guardar en localStorage (compat)
+  if (hasValues) { taskBriefMap[String(activeTaskBriefTaskId)] = brief; }
+  else { delete taskBriefMap[String(activeTaskBriefTaskId)]; }
   saveTaskBriefs();
 
-  const payload = {};
+  // Construir payload para la DB
+  const payload = { brief: hasValues ? brief : null };
   if (ventureId !== String(task.venture_id || '')) payload.venture_id = ventureId || null;
   if (commitDate) payload.fecha_limite = commitDate;
   const nextTitle = ensureAssigneeTag(ensureEntityTag(task.titulo, ventureId), assigneeId);
   if (nextTitle !== task.titulo) payload.titulo = nextTitle;
 
-  if (Object.keys(payload).length) {
-    const { error } = await sb.from('tasks').update(payload).eq('id', activeTaskBriefTaskId);
-    if (error) {
-      alert(`No se pudo guardar la ficha delegable. ${error.message || ''}`);
-      return;
-    }
+  const { error } = await sb.from('tasks').update(payload).eq('id', activeTaskBriefTaskId);
+  if (error) {
+    alert(`No se pudo guardar la ficha delegable. ${error.message || ''}`);
+    return;
   }
+  // Actualizar en memoria local
+  if (task) task.brief = hasValues ? brief : null;
+  const taskPD = tasksProgressData.find(t => String(t.id) === String(activeTaskBriefTaskId));
+  if (taskPD) taskPD.brief = hasValues ? brief : null;
 
-  await logActivity('actualizo ficha delegable de una tarea');
+  await logActivity('actualizó ficha delegable de una tarea');
   closeTaskBriefModal();
-  await loadTasks();
-  await loadNotesToday();
   renderTasksPanel();
   renderTareasPage();
+  renderVenturesDetail();
 }
 
 function escapeHtml(value) {
@@ -7924,6 +8011,13 @@ async function toggleTask(id, el) {
 }
 
 function openTaskModal() {
+  // Poblar selector de tareas padre (solo tareas sin parent, para evitar jerarquías de 2+ niveles)
+  const parentSel = document.getElementById('task-parent');
+  if (parentSel) {
+    const topLevel = tasksData.filter(t => !t.parent_task_id);
+    parentSel.innerHTML = '<option value="">— Tarea independiente —</option>' +
+      topLevel.map(t => `<option value="${t.id}">${escapeHtml(cleanTaskTitle(t.titulo))}${t.ventures ? ` · ${t.ventures.emoji}` : ''}</option>`).join('');
+  }
   document.getElementById('task-modal').style.display='flex';
   document.getElementById('task-titulo').focus();
 }
@@ -7932,6 +8026,18 @@ function openTaskModalForVenture(ventureId) {
   openTaskModal();
   const sel = document.getElementById('task-venture');
   if (sel && ventureId) sel.value = String(ventureId);
+}
+
+function openTaskModalForParent(parentId) {
+  openTaskModal();
+  const sel = document.getElementById('task-parent');
+  if (sel && parentId) sel.value = String(parentId);
+  // Pre-seleccionar el venture del padre si está disponible
+  const parentTask = tasksData.find(t => String(t.id) === String(parentId));
+  if (parentTask?.venture_id) {
+    const vSel = document.getElementById('task-venture');
+    if (vSel) vSel.value = String(parentTask.venture_id);
+  }
 }
 
 function openDashboardQuickTask() {
@@ -7952,6 +8058,7 @@ function closeTaskModal(e) {
     document.getElementById('task-titulo').value='';
     document.getElementById('task-fecha').value='';
     document.getElementById('task-asignado').value='';
+    const p = document.getElementById('task-parent'); if (p) p.value = '';
   }
 }
 
@@ -7979,7 +8086,8 @@ async function saveTask() {
 
   const { error } = await sb.from('tasks').insert({
     titulo: tituloFinal, venture_id: venture||null, prioridad,
-    fecha_limite: fecha||null, estado:'pendiente', creado_por: creatorProfileId
+    fecha_limite: fecha||null, estado:'pendiente', creado_por: creatorProfileId,
+    parent_task_id: document.getElementById('task-parent')?.value || null
   });
   if (!error) {
     await logActivity('creó una nueva tarea');
