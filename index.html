@@ -4227,6 +4227,8 @@ async function loadApp() {
   renderDashboard();
   renderTasksPanel();
   renderTareasPage();
+  // Re-renderizar calendario del executor una vez que los datos están listos
+  if (currentUserRole === 'executor') renderMiHorario();
   // Chequear GCal en background para el sidebar
   if (currentUserRole === 'owner') checkGcalConnection();
   // Cargar datos de horarios y objetivos en background
