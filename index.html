@@ -3113,6 +3113,7 @@ async function loadMiHorario() {
 }
 
 function renderMiHorario() {
+  window._executorActiveDayPanel = null; // ya no estamos en el panel de día
   const container = document.getElementById('mi-horario-content');
   if (!container) return;
 
@@ -3290,6 +3291,7 @@ function renderMiHorario() {
 }
 
 function openExecutorDayPanel(dateStr) {
+  window._executorActiveDayPanel = dateStr; // para re-render tras acciones
   const container = document.getElementById('mi-horario-content');
   if (!container) return;
 
@@ -3316,10 +3318,10 @@ function openExecutorDayPanel(dateStr) {
     const cards = colTasks.map(t => {
       const isPending = col.key === 'pendiente', isInProg = col.key === 'en_progreso';
       let btns = '';
-      if (isPending) btns = `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)">▶ Iniciar</button>`;
-      if (isInProg)  btns = `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)">📤 Revisión</button>
-        <button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','pendiente');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)" style="color:var(--text3);">↩</button>`;
-      if (col.key === 'en_publicacion') btns = `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}');setTimeout(()=>openExecutorDayPanel('${dateStr}'),400)">✅ Publicado</button>`;
+      if (isPending) btns = `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','en_curso')">▶ Iniciar</button>`;
+      if (isInProg)  btns = `<button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','entregado')">📤 Revisión</button>
+        <button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','pendiente')" style="color:var(--text3);">↩</button>`;
+      if (col.key === 'en_publicacion') btns = `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado</button>`;
       const vCardColor = getVentureColor(t.venture_id);
       return `<div class="kanban-card" style="border-left:3px solid ${vCardColor};">
         <div class="kanban-card-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
@@ -5783,7 +5785,6 @@ async function updateTaskState(taskId, nextState, activityText = null) {
 }
 
 async function moveExecutorTask(taskId, nextState) {
-  // Mapear estados del tablero personal a estados unificados del kanban
   const stateMap = { en_curso: 'en_progreso', entregado: 'en_revision', bloqueado: 'pendiente' };
   const mappedState = stateMap[nextState] || nextState;
   const inProgressCount = tasksData.filter(t => t.estado === 'en_progreso').length;
@@ -5795,11 +5796,32 @@ async function moveExecutorTask(taskId, nextState) {
     await kanbanSendToReview(taskId);
     return;
   }
-  const labels = {
-    pendiente: 'movió una tarea a por hacer',
-    en_progreso: 'inició una tarea'
-  };
-  await updateTaskState(taskId, mappedState, labels[mappedState] || 'actualizó una tarea');
+
+  // Optimistic update — actualizar memoria y re-renderizar antes de ir a la red
+  const taskInProgress = tasksProgressData.find(t => String(t.id) === String(taskId));
+  const taskInData     = tasksData.find(t => String(t.id) === String(taskId));
+  const prevState = taskInProgress?.estado;
+  if (taskInProgress) taskInProgress.estado = mappedState;
+  if (taskInData)     taskInData.estado     = mappedState;
+
+  // Re-renderizar inmediatamente
+  if (window._executorActiveDayPanel) openExecutorDayPanel(window._executorActiveDayPanel);
+  renderVenturesDetail();
+  renderTareasPage();
+
+  // Persistir en background
+  const labels = { pendiente: 'movió una tarea a por hacer', en_progreso: 'inició una tarea' };
+  const { error } = await sb.from('tasks').update({ estado: mappedState, completado_en: null }).eq('id', taskId);
+  if (error) {
+    // Rollback
+    if (taskInProgress) taskInProgress.estado = prevState;
+    if (taskInData)     taskInData.estado     = prevState;
+    if (window._executorActiveDayPanel) openExecutorDayPanel(window._executorActiveDayPanel);
+    renderVenturesDetail();
+    alert('No se pudo actualizar la tarea.');
+    return;
+  }
+  if (labels[mappedState]) logActivity(labels[mappedState]);
 }
 
 async function approveDeliveredTask(taskId) {
