@@ -4960,13 +4960,6 @@ function renderExecutorVentureDetail() {
       </div>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
-        <div class="kpi-card" style="padding:10px 14px;min-width:100px;">
-          <div class="kpi-value" style="font-size:16px;">${pct}<span style="font-size:10px;">%</span></div>
-          <div class="kpi-label">Completado</div>
-          <div style="height:3px;background:var(--border);border-radius:2px;margin-top:4px;">
-            <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px;"></div>
-          </div>
-        </div>
         <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
           <div class="kpi-value" style="font-size:16px;">${pendientes}</div>
           <div class="kpi-label">Por hacer</div>
@@ -4979,11 +4972,21 @@ function renderExecutorVentureDetail() {
           <div class="kpi-value" style="font-size:16px;color:var(--amber,#f59e0b);">${enRevision}</div>
           <div class="kpi-label">En revisión</div>
         </div>
-        ${metrics.slice(0,3).map(m=>`
         <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
-          <div class="kpi-value" style="font-size:16px;">${escapeHtml(m.valor)}</div>
-          <div class="kpi-label">${escapeHtml(m.nombre)}</div>
-        </div>`).join('')}
+          <div class="kpi-value" style="font-size:16px;color:#38bdf8;">${vTasks.filter(t=>t.estado==='en_publicacion').length}</div>
+          <div class="kpi-label">Por publicar</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+          <div class="kpi-value" style="font-size:16px;color:var(--green,#4ade80);">${completadas}</div>
+          <div class="kpi-label">Completadas</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 14px;min-width:100px;">
+          <div class="kpi-value" style="font-size:16px;">${pct}<span style="font-size:10px;">%</span></div>
+          <div class="kpi-label">Completado</div>
+          <div style="height:3px;background:var(--border);border-radius:2px;margin-top:4px;">
+            <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px;"></div>
+          </div>
+        </div>
       </div>
 
       <div class="panel">
