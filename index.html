@@ -2570,6 +2570,7 @@ let venturesData = [];
 let tasksData    = [];
 let tasksProgressData = [];
 let ventureSocialConfig = []; // venture_social_config rows keyed in memory
+let venturePubSchedule = {}; // { ventureId: [{day_of_week, tipo, notas}] }
 let notesTodayData = [];
 let notesTodayManualOrder = [];
 let usersData = [];
@@ -4703,6 +4704,83 @@ function generateWeeklyTasks(ventureId) {
   // Placeholder — será conectado a IA
   alert('🚧 Próximamente: la IA leerá la configuración de redes, el horario del ejecutor y generará las tareas de la semana automáticamente.');
 }
+
+// ── Calendario de publicaciones ─────────────────────────────────────────────
+const PUB_DAY_LABELS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+async function loadVenturePubSchedule(ventureId) {
+  try {
+    const { data, error } = await sb.from('venture_pub_schedule')
+      .select('*').eq('venture_id', ventureId).order('day_of_week');
+    if (error) return; // tabla no existe aún — silencioso
+    venturePubSchedule[ventureId] = data || [];
+  } catch(_) {}
+}
+
+function renderPubScheduleTab(ventureId) {
+  const isOwner = currentUserRole === 'owner';
+  const rows = venturePubSchedule[ventureId] || [];
+  const byDay = {};
+  rows.forEach(r => { byDay[r.day_of_week] = r; });
+
+  const days = [1,2,3,4,5,6,7].map(d => {
+    const r = byDay[d];
+    const tipo = r?.tipo_publicacion || '';
+    const notas = r?.notas || '';
+    const isEmpty = !tipo && !notas;
+    if (!isOwner) {
+      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+        <div style="width:68px;flex-shrink:0;font-size:11px;font-weight:600;color:var(--text3);padding-top:2px;">${PUB_DAY_LABELS[d]}</div>
+        <div style="flex:1;min-width:0;">
+          ${tipo ? `<div style="font-size:12px;color:var(--text);font-weight:500;">${escapeHtml(tipo)}</div>` : ''}
+          ${notas ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;">${escapeHtml(notas)}</div>` : ''}
+          ${isEmpty ? `<div style="font-size:11px;color:var(--border);">—</div>` : ''}
+        </div>
+      </div>`;
+    }
+    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="width:68px;flex-shrink:0;font-size:11px;font-weight:600;color:var(--text3);padding-top:6px;">${PUB_DAY_LABELS[d]}</div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+        <input type="text" placeholder="Tipo de publicación..." value="${escapeHtml(tipo)}"
+          id="pub-tipo-${ventureId}-${d}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:12px;width:100%;box-sizing:border-box;" />
+        <input type="text" placeholder="Notas adicionales..." value="${escapeHtml(notas)}"
+          id="pub-notas-${ventureId}-${d}" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:11px;width:100%;box-sizing:border-box;" />
+      </div>
+      <button class="kanban-action-btn" onclick="savePubDay('${ventureId}',${d})" style="flex-shrink:0;margin-top:4px;" id="pub-save-${ventureId}-${d}">Guardar</button>
+    </div>`;
+  }).join('');
+
+  return `<div style="padding:4px 0;">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">
+      ${isOwner ? 'Define qué tipo de contenido se publica cada día de la semana.' : 'Calendario de publicaciones semanal.'}
+    </div>
+    ${days}
+    ${!rows.length && !isOwner ? `<div style="font-size:12px;color:var(--text3);text-align:center;padding:20px 0;">Aún no hay calendario configurado</div>` : ''}
+  </div>`;
+}
+
+async function savePubDay(ventureId, dayOfWeek) {
+  const tipo  = document.getElementById(`pub-tipo-${ventureId}-${dayOfWeek}`)?.value?.trim() || '';
+  const notas = document.getElementById(`pub-notas-${ventureId}-${dayOfWeek}`)?.value?.trim() || '';
+  const btn   = document.getElementById(`pub-save-${ventureId}-${dayOfWeek}`);
+  const existing = (venturePubSchedule[ventureId] || []).find(r => r.day_of_week === dayOfWeek);
+  try {
+    if (existing) {
+      await sb.from('venture_pub_schedule').update({ tipo_publicacion: tipo, notas }).eq('id', existing.id);
+      existing.tipo_publicacion = tipo; existing.notas = notas;
+    } else {
+      const { data, error } = await sb.from('venture_pub_schedule')
+        .insert({ venture_id: ventureId, day_of_week: dayOfWeek, tipo_publicacion: tipo, notas }).select().single();
+      if (error) throw error;
+      if (!venturePubSchedule[ventureId]) venturePubSchedule[ventureId] = [];
+      venturePubSchedule[ventureId].push(data);
+    }
+    if (btn) { const orig = btn.textContent; btn.textContent = '✓'; btn.style.opacity='.6'; setTimeout(()=>{ btn.textContent=orig; btn.style.opacity=''; }, 1200); }
+  } catch(e) {
+    alert('Error al guardar: ' + (e.message || 'tabla no creada aún'));
+  }
+}
+// ── Fin Calendario publicaciones ────────────────────────────────────────────
 // ── Fin Redes Sociales ──────────────────────────────────────────────────────
 
 async function saveVentureNotes(ventureId, text) {
@@ -4881,7 +4959,6 @@ function renderExecutorVentureDetail() {
   if (!selected) return;
 
   const estadoLabel = {activo:'Activo',building:'En construcción',planeado:'Planeado',pausado:'Pausado'}[selected.estado] || selected.estado;
-  const metrics = (selected.venture_metrics || []).sort((a,b)=>a.orden-b.orden);
 
   // Tareas del executor en este venture
   const vTasks = tasksData.filter(t => String(t.venture_id||'') === String(selected.id));
@@ -4896,19 +4973,7 @@ function renderExecutorVentureDetail() {
   const ESTADO_COLOR = { pendiente:'var(--text3)', en_progreso:'var(--blue,#60a5fa)', en_revision:'var(--amber,#f59e0b)', en_aprobacion:'var(--purple,#a78bfa)', en_publicacion:'#38bdf8', completado:'var(--green,#4ade80)' };
   const PRIO_COLOR   = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
 
-  // Chips inline dentro de la página (fix "pegado")
-  const inlineChips = venturesData.map(v => {
-    const vt = tasksData.filter(t => String(t.venture_id||'') === String(v.id));
-    if (!vt.length) return '';
-    const active = String(v.id) === String(selected.id);
-    const pending = vt.filter(t => t.estado !== 'completado').length;
-    return `<button class="venture-chip-btn${active?' active':''}" onclick="selectedVentureId='${v.id}';renderVenturesDetail()">
-      <span>${v.emoji}</span><span>${escapeHtml(v.nombre)}</span>
-      ${pending ? `<span style="background:${active?'rgba(0,0,0,.2)':'var(--border)'};padding:1px 5px;border-radius:8px;font-size:10px;">${pending}</span>` : ''}
-    </button>`;
-  }).filter(Boolean).join('');
-
-  // Actualizar también el sidebar hamburger (con closeSidebar)
+  // Actualizar sidebar
   const sidebarChips = venturesData.map(v => {
     const vt = tasksData.filter(t => String(t.venture_id||'') === String(v.id));
     if (!vt.length) return '';
@@ -4944,6 +5009,11 @@ function renderExecutorVentureDetail() {
     </div>`;
   }).join('') : `<div class="empty-state"><div class="empty-sub">Sin tareas asignadas en este venture</div></div>`;
 
+  // Estado activo de pestaña
+  const activeExecTab = window._execVentureTab || 'tareas';
+
+  const tabStyle = (t) => `cursor:pointer;padding:7px 14px;font-size:12px;font-weight:500;border:none;background:none;color:${activeExecTab===t?'var(--text)':'var(--text3)'};border-bottom:2px solid ${activeExecTab===t?'var(--gold)':'transparent'};transition:all .15s;`;
+
   el.innerHTML = `
     <div class="venture-detail-card">
       <div class="venture-detail-header">
@@ -4959,45 +5029,86 @@ function renderExecutorVentureDetail() {
         </div>
       </div>
 
-      <div style="padding:12px 14px;">
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
-          <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
-            <div class="kpi-value" style="font-size:16px;">${pendientes}</div>
-            <div class="kpi-label">Por hacer</div>
-          </div>
-          <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
-            <div class="kpi-value" style="font-size:16px;color:var(--blue,#60a5fa);">${enProgreso}</div>
-            <div class="kpi-label">En progreso</div>
-          </div>
-          <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
-            <div class="kpi-value" style="font-size:16px;color:var(--amber,#f59e0b);">${enRevision}</div>
-            <div class="kpi-label">En revisión</div>
-          </div>
-          <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
-            <div class="kpi-value" style="font-size:16px;color:#38bdf8;">${vTasks.filter(t=>t.estado==='en_publicacion').length}</div>
-            <div class="kpi-label">Por publicar</div>
-          </div>
-          <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
-            <div class="kpi-value" style="font-size:16px;color:var(--green,#4ade80);">${completadas}</div>
-            <div class="kpi-label">Completadas</div>
-          </div>
-          <div class="kpi-card" style="padding:10px 14px;min-width:100px;">
-            <div class="kpi-value" style="font-size:16px;">${pct}<span style="font-size:10px;">%</span></div>
-            <div class="kpi-label">Completado</div>
-            <div style="height:3px;background:var(--border);border-radius:2px;margin-top:4px;">
-              <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px;"></div>
+      <!-- Pestañas -->
+      <div style="display:flex;border-bottom:1px solid var(--border);padding:0 14px;gap:0;">
+        <button style="${tabStyle('tareas')}" onclick="switchExecVentureTab('tareas','${selected.id}')">Mis tareas</button>
+        <button style="${tabStyle('info')}" onclick="switchExecVentureTab('info','${selected.id}')">Información</button>
+        <button style="${tabStyle('pub')}" onclick="switchExecVentureTab('pub','${selected.id}')">Publicaciones</button>
+      </div>
+
+      <!-- Contenido de pestaña -->
+      <div id="exec-venture-tab-content" style="padding:12px 14px;">
+        ${activeExecTab === 'tareas' ? `
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+            <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+              <div class="kpi-value" style="font-size:16px;">${pendientes}</div>
+              <div class="kpi-label">Por hacer</div>
+            </div>
+            <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+              <div class="kpi-value" style="font-size:16px;color:var(--blue,#60a5fa);">${enProgreso}</div>
+              <div class="kpi-label">En progreso</div>
+            </div>
+            <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+              <div class="kpi-value" style="font-size:16px;color:var(--amber,#f59e0b);">${enRevision}</div>
+              <div class="kpi-label">En revisión</div>
+            </div>
+            <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+              <div class="kpi-value" style="font-size:16px;color:#38bdf8;">${vTasks.filter(t=>t.estado==='en_publicacion').length}</div>
+              <div class="kpi-label">Por publicar</div>
+            </div>
+            <div class="kpi-card" style="padding:10px 14px;min-width:80px;">
+              <div class="kpi-value" style="font-size:16px;color:var(--green,#4ade80);">${completadas}</div>
+              <div class="kpi-label">Completadas</div>
+            </div>
+            <div class="kpi-card" style="padding:10px 14px;min-width:100px;">
+              <div class="kpi-value" style="font-size:16px;">${pct}<span style="font-size:10px;">%</span></div>
+              <div class="kpi-label">Completado</div>
+              <div style="height:3px;background:var(--border);border-radius:2px;margin-top:4px;">
+                <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px;"></div>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div class="panel" style="margin:0;">
-          <div class="panel-header">
-            <div class="panel-title">Mis tareas · ${escapeHtml(selected.nombre)}</div>
+          <div class="panel" style="margin:0;">
+            <div class="panel-header">
+              <div class="panel-title">Mis tareas · ${escapeHtml(selected.nombre)}</div>
+            </div>
+            ${taskRows}
           </div>
-          ${taskRows}
-        </div>
+        ` : ''}
+        ${activeExecTab === 'info' ? `
+          <div>
+            ${selected.descripcion
+              ? `<p style="font-size:13px;line-height:1.6;color:var(--text);white-space:pre-wrap;margin:0 0 16px;">${escapeHtml(selected.descripcion)}</p>`
+              : `<div style="font-size:12px;color:var(--text3);">Sin descripción disponible</div>`}
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;border-top:1px solid var(--border);padding-top:12px;">
+              <div style="display:flex;gap:10px;font-size:12px;">
+                <span style="color:var(--text3);width:90px;flex-shrink:0;">Entidad</span>
+                <span style="color:var(--text);">${escapeHtml(selected.nombre_entidad||'—')}</span>
+              </div>
+              <div style="display:flex;gap:10px;font-size:12px;">
+                <span style="color:var(--text3);width:90px;flex-shrink:0;">Categoría</span>
+                <span style="color:var(--text);">${escapeHtml(selected.categoria||'—')}</span>
+              </div>
+              <div style="display:flex;gap:10px;font-size:12px;">
+                <span style="color:var(--text3);width:90px;flex-shrink:0;">Estado</span>
+                <span class="status-pill pill-${selected.estado}" style="font-size:10px;">${estadoLabel}</span>
+              </div>
+              <div style="display:flex;gap:10px;font-size:12px;">
+                <span style="color:var(--text3);width:90px;flex-shrink:0;">Avance</span>
+                <span style="color:var(--text);">${selected.avance || 0}%</span>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+        ${activeExecTab === 'pub' ? renderPubScheduleTab(selected.id) : ''}
       </div>
     </div>`;
+}
+
+async function switchExecVentureTab(tab, ventureId) {
+  window._execVentureTab = tab;
+  if (tab === 'pub') await loadVenturePubSchedule(ventureId);
+  renderExecutorVentureDetail();
 }
 
 function renderVenturesDetail() {
@@ -5012,6 +5123,11 @@ function renderVenturesDetail() {
 
   // Vista simplificada para executor
   if (currentUserRole === 'executor') {
+    // resetear pestaña al cambiar de venture
+    if (!window._execVentureTabVenture || window._execVentureTabVenture !== selectedVentureId) {
+      window._execVentureTab = 'tareas';
+      window._execVentureTabVenture = selectedVentureId;
+    }
     renderExecutorVentureDetail();
     return;
   }
