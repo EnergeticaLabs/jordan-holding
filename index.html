@@ -4324,10 +4324,6 @@ function applyRoleVisibility() {
   const newTaskBtn = document.querySelector('#page-tareas .btn.btn-primary-sm');
   if (newTaskBtn) newTaskBtn.style.display = currentUserRole === 'executor' ? 'none' : '';
 
-  // Ocultar "Tareas" del sidebar para executor (la página sigue accesible)
-  const tareasSidebarItem = document.querySelector('.sidebar-item[data-page="tareas"]');
-  if (tareasSidebarItem) tareasSidebarItem.style.display = currentUserRole === 'executor' ? 'none' : '';
-
   // Renombrar "Mi Horario" → "Calendario" en el sidebar para executor
   const miHorarioSidebarItem = document.querySelector('.sidebar-item[data-page="mi-horario"]');
   if (miHorarioSidebarItem) {
