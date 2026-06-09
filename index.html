@@ -3360,12 +3360,10 @@ async function loadGoals() {
 async function loadCalendario() {
   const container = document.getElementById('calendario-content');
   if (!container) return;
-  // Render inmediato con datos existentes
-  renderCalendario();
-  // Cargar datos críticos (native events + presence) sin bloquear UI
+  // Cargar datos críticos primero, luego renderizar una sola vez
   await Promise.all([checkGcalConnection(), loadPresenceRequests(), loadCalNativeEvents()]);
   renderCalendario();
-  // GCal en background — no bloquea el render
+  // GCal en background — no bloquea el render inicial
   if (gcalConnected && currentUserRole === 'owner') {
     loadCalendarioEvents(); // sin await
   }
