@@ -3205,7 +3205,8 @@ function renderMiHorario() {
     const dayStr  = `${year}-${String(month+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
     const isToday = dayStr === todayStr;
     const colIdx  = i % 7; // 0=Lun..6=Dom
-    const isWeekend = colIdx >= 5;
+    // El executor trabaja sábados (y eventualmente domingos), no se grisan
+    const isWeekend = currentUserRole === 'executor' ? false : colIdx >= 5;
 
     const dayTasks   = monthTasks.filter(t => t.fecha_limite?.slice(0,10) === dayStr);
     const hasTasks   = dayTasks.length > 0;
