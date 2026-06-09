@@ -3360,10 +3360,19 @@ async function loadGoals() {
 async function loadCalendario() {
   const container = document.getElementById('calendario-content');
   if (!container) return;
-  // Cargar datos críticos primero, luego renderizar una sola vez
+  // Cargar datos críticos en paralelo
   await Promise.all([checkGcalConnection(), loadPresenceRequests(), loadCalNativeEvents()]);
+  // Pre-cargar cache de GCal antes del primer render (evita flash)
+  if (gcalConnected && currentUserRole === 'owner' && currentProfileId) {
+    const weekStart = getCalWeekStart();
+    const cacheKey = `vfh-gcal-${weekStart.toISOString().slice(0,10)}-${currentProfileId}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) calEvents = JSON.parse(cached);
+    } catch(_) {}
+  }
   renderCalendario();
-  // GCal en background — no bloquea el render inicial
+  // Fetch fresco de GCal en background — actualiza si hay cambios
   if (gcalConnected && currentUserRole === 'owner') {
     loadCalendarioEvents(); // sin await
   }
