@@ -2571,6 +2571,7 @@ let tasksData    = [];
 let tasksProgressData = [];
 let ventureSocialConfig = []; // venture_social_config rows keyed in memory
 let venturePubSchedule = {}; // { ventureId: [{day_of_week, tipo, notas}] }
+const venturePubScheduleLoaded = new Set(); // ventures cuyo schedule ya fue cargado
 let notesTodayData = [];
 let notesTodayManualOrder = [];
 let usersData = [];
@@ -4228,6 +4229,18 @@ async function loadApp() {
       .eq('user_id', currentProfileId).eq('active', true)
       .order('day_of_week').order('start_time')
       .then(({ data }) => { scheduleBlocksData = data || []; });
+    // Pre-cargar pub schedules de todos los ventures para evitar delay al abrir pestaña
+    sb.from('venture_pub_schedule').select('*').order('day_of_week')
+      .then(({ data }) => {
+        if (!data) return;
+        data.forEach(r => {
+          if (!venturePubSchedule[r.venture_id]) venturePubSchedule[r.venture_id] = [];
+          venturePubSchedule[r.venture_id].push(r);
+          venturePubScheduleLoaded.add(r.venture_id);
+        });
+        // Marcar también ventures sin ninguna fila como cargados
+        venturesData.forEach(v => venturePubScheduleLoaded.add(v.id));
+      });
   }
 
   // Mostrar app (para executor justo antes de navegar — ya tiene datos)
@@ -4709,12 +4722,14 @@ function generateWeeklyTasks(ventureId) {
 const PUB_DAY_LABELS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
 async function loadVenturePubSchedule(ventureId) {
+  if (venturePubScheduleLoaded.has(ventureId)) return; // ya cargado
   try {
     const { data, error } = await sb.from('venture_pub_schedule')
       .select('*').eq('venture_id', ventureId).order('day_of_week');
-    if (error) return; // tabla no existe aún — silencioso
+    if (error) { venturePubScheduleLoaded.add(ventureId); return; }
     venturePubSchedule[ventureId] = data || [];
-  } catch(_) {}
+    venturePubScheduleLoaded.add(ventureId);
+  } catch(_) { venturePubScheduleLoaded.add(ventureId); }
 }
 
 function renderPubScheduleTab(ventureId) {
