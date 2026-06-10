@@ -5693,6 +5693,18 @@ function renderTareasPage() {
   const parentTasks = filteredTasks.filter(t => !t.parent_task_id);
   const childrenOf  = id => filteredTasks.filter(t => String(t.parent_task_id||'') === String(id));
 
+  // DEBUG TEMPORAL — eliminar tras diagnóstico
+  const debugSample = filteredTasks.slice(0,3).map(t =>
+    `id:${t.id} | parent_task_id:${JSON.stringify(t.parent_task_id)} | prioridad:${t.prioridad} | titulo:${(t.titulo||'').slice(0,30)}`
+  ).join('<br>');
+  if (!parentTasks.length && filteredTasks.length) {
+    el.innerHTML = `<div style="padding:16px;font-size:11px;color:var(--text3);background:var(--bg2);border-radius:8px;border:1px solid var(--border);">
+      <div style="font-weight:700;color:var(--red,#ef4444);margin-bottom:8px;">⚠ Debug: ${filteredTasks.length} tareas cargadas pero parentTasks=0</div>
+      <div style="font-family:monospace;">${debugSample}</div>
+    </div>`;
+    return;
+  }
+
   const renderTaskRow = (t, isChild = false) => {
     const brief = t.brief || getTaskBrief(t.id);
     const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
