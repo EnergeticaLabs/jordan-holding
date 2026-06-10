@@ -2406,6 +2406,65 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   </div>
 </div>
 
+<!-- MODAL EDICIÓN DE TAREA (owner) -->
+<div class="modal-overlay" id="edit-task-modal" style="display:none;" onclick="closeEditTaskModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Editar tarea</div>
+    <div class="form-group">
+      <label class="form-label">Título</label>
+      <input type="text" class="form-input" id="edit-task-titulo" placeholder="Título de la tarea">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Venture</label>
+      <select class="form-input" id="edit-task-venture">
+        <option value="">— Sin venture —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Asignado a</label>
+      <select class="form-input" id="edit-task-asignado">
+        <option value="">— Sin responsable —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Prioridad</label>
+      <select class="form-input" id="edit-task-prioridad">
+        <option value="baja">Baja</option>
+        <option value="media">Media</option>
+        <option value="alta">Alta</option>
+        <option value="urgente">Urgente</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Estado</label>
+      <select class="form-input" id="edit-task-estado">
+        <option value="pendiente">Por hacer</option>
+        <option value="en_progreso">En progreso</option>
+        <option value="en_revision">En revisión</option>
+        <option value="en_aprobacion">En aprobación</option>
+        <option value="en_publicacion">Por publicar</option>
+        <option value="completado">Completado</option>
+        <option value="cancelado">Cancelado</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Fecha límite</label>
+      <input type="date" class="form-input" id="edit-task-fecha">
+    </div>
+    <div class="form-group" id="edit-task-parent-group">
+      <label class="form-label">Subtarea de (opcional)</label>
+      <select class="form-input" id="edit-task-parent">
+        <option value="">— Tarea independiente —</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" style="color:var(--red);border-color:var(--red);margin-right:auto;" onclick="deleteTaskFromModal()">Eliminar</button>
+      <button class="btn-cancel" onclick="closeEditTaskModal()">Cancelar</button>
+      <button class="btn-save" onclick="saveEditTaskModal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL CONFIG USUARIO -->
 <div class="modal-overlay" id="user-config-modal" style="display:none;" onclick="closeUserConfigModal(event)">
   <div class="modal" onclick="event.stopPropagation()">
@@ -3341,6 +3400,7 @@ function openExecutorDayPanel(dateStr) {
           ${isChild ? '<span style="font-size:9px;color:var(--text3);margin-right:3px;">└</span>' : ''}
           ${escapeHtml(cleanTaskTitle(t.titulo))}
           ${hasBrief ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;margin-left:4px;vertical-align:middle;" onclick="openTaskBriefModal('${t.id}',true)">Brief</span>` : ''}
+          ${currentUserRole==='owner' ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;margin-left:4px;vertical-align:middle;" onclick="openEditTaskModal('${t.id}')">✎</span>` : ''}
         </div>
         <div class="kanban-card-meta">
           <span style="color:${PRIO_COLOR[t.prioridad]||PRIO_COLOR.media};">${t.prioridad||'media'}</span>
@@ -4470,7 +4530,7 @@ async function loadTasks() {
 
   // Dataset para calcular avance dinamico por venture
   const { data: progressData } = await sb.from('tasks')
-    .select('id,venture_id,estado,titulo,prioridad,fecha_limite,completado_en')
+    .select('id,venture_id,estado,titulo,prioridad,fecha_limite,completado_en,brief,parent_task_id')
     .neq('estado', 'cancelado');
   let scopedProgress = progressData || [];
   if (currentUserRole === 'manager' && allowedVentureIds && allowedVentureIds.size) {
@@ -5342,6 +5402,7 @@ function renderVenturesDetail() {
           ${tIsChild ? '<span style="font-size:9px;color:var(--text3);margin-right:3px;">└</span>' : ''}
           ${escapeHtml(cleanTaskTitle(t.titulo))}
           ${tHasBrief ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;margin-left:4px;vertical-align:middle;" onclick="openTaskBriefModal('${t.id}',${currentUserRole==='executor'?'true':'false'})">Brief</span>` : ''}
+          ${isOwner ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;margin-left:4px;vertical-align:middle;" onclick="openEditTaskModal('${t.id}')">✎</span>` : ''}
         </div>
         <div class="kanban-card-meta">
           <span>${escapeHtml((t.prioridad||'media').toUpperCase())}</span>
@@ -8113,6 +8174,107 @@ async function logActivity(accion) {
   const { data: p } = await sb.from('users').select('id').eq('auth_id', currentUser.id).single();
   if (p) { await sb.from('activity_log').insert({ user_id:p.id, accion }); await loadActivity(); }
 }
+
+// ── EDICIÓN DE TAREA (owner) ────────────────────────────────────────────────
+let _editTaskId = null;
+
+function openEditTaskModal(taskId) {
+  if (currentUserRole !== 'owner') return;
+  const task = tasksData.find(t => String(t.id) === String(taskId))
+             || tasksProgressData.find(t => String(t.id) === String(taskId));
+  if (!task) return;
+  _editTaskId = String(taskId);
+
+  // Poblar selects
+  const vSel = document.getElementById('edit-task-venture');
+  if (vSel) vSel.innerHTML = '<option value="">— Sin venture —</option>' +
+    venturesData.map(v => `<option value="${v.id}"${String(v.id)===String(task.venture_id||'')?'selected':''}>${escapeHtml(v.nombre)}</option>`).join('');
+
+  const uSel = document.getElementById('edit-task-asignado');
+  if (uSel) {
+    const assigneeId = usersData.find(u => {
+      const tag = '@' + normalizeText(u.nombre).replace(/\s+/g,'');
+      return (task.titulo||'').toLowerCase().includes(tag.toLowerCase());
+    })?.id || '';
+    uSel.innerHTML = '<option value="">— Sin responsable —</option>' +
+      usersData.map(u => `<option value="${u.id}"${String(u.id)===String(assigneeId)?'selected':''}>${escapeHtml(u.nombre)}</option>`).join('');
+  }
+
+  const parentSel = document.getElementById('edit-task-parent');
+  if (parentSel) {
+    const topLevel = tasksData.filter(t => !t.parent_task_id && String(t.id) !== String(taskId));
+    parentSel.innerHTML = '<option value="">— Tarea independiente —</option>' +
+      topLevel.map(t => `<option value="${t.id}"${String(t.id)===String(task.parent_task_id||'')?'selected':''}>${escapeHtml(cleanTaskTitle(t.titulo))}</option>`).join('');
+  }
+
+  document.getElementById('edit-task-titulo').value   = cleanTaskTitle(task.titulo || '');
+  document.getElementById('edit-task-prioridad').value = task.prioridad || 'media';
+  document.getElementById('edit-task-estado').value    = task.estado || 'pendiente';
+  document.getElementById('edit-task-fecha').value     = task.fecha_limite?.slice(0,10) || '';
+
+  document.getElementById('edit-task-modal').style.display = 'flex';
+}
+
+function closeEditTaskModal(e) {
+  if (!e || e.target === document.getElementById('edit-task-modal')) {
+    document.getElementById('edit-task-modal').style.display = 'none';
+    _editTaskId = null;
+  }
+}
+
+async function saveEditTaskModal() {
+  if (!_editTaskId) return;
+  const titulo    = document.getElementById('edit-task-titulo').value.trim();
+  const ventureId = document.getElementById('edit-task-venture').value || null;
+  const assigneeId= document.getElementById('edit-task-asignado').value || null;
+  const prioridad = document.getElementById('edit-task-prioridad').value;
+  const estado    = document.getElementById('edit-task-estado').value;
+  const fecha     = document.getElementById('edit-task-fecha').value || null;
+  const parentId  = document.getElementById('edit-task-parent').value || null;
+  if (!titulo) { alert('El título no puede estar vacío'); return; }
+
+  // Reconstruir título con @tag de asignado
+  const assignedUser = assigneeId ? usersData.find(u => String(u.id) === String(assigneeId)) : null;
+  const assignedTag  = assignedUser ? `@${normalizeText(assignedUser.nombre).replace(/\s+/g,'')}` : '';
+  const tituloClean  = titulo.replace(/@\S+/g, '').trim();
+  const tituloFinal  = assignedTag ? `${tituloClean} ${assignedTag}` : tituloClean;
+
+  const payload = {
+    titulo: tituloFinal, venture_id: ventureId, prioridad, estado,
+    fecha_limite: fecha, parent_task_id: parentId,
+    completado_en: estado === 'completado' ? new Date().toISOString() : null
+  };
+
+  // Optimistic update en memoria
+  [tasksData, tasksProgressData].forEach(arr => {
+    const t = arr.find(x => String(x.id) === _editTaskId);
+    if (t) Object.assign(t, payload);
+  });
+  renderTasksPanel(); renderTareasPage(); renderVenturesDetail();
+  closeEditTaskModal();
+
+  const { error } = await sb.from('tasks').update(payload).eq('id', _editTaskId);
+  if (error) {
+    alert('Error al guardar: ' + error.message);
+    await loadTasks(); renderTasksPanel(); renderTareasPage(); renderVenturesDetail();
+  } else {
+    logActivity('editó una tarea');
+  }
+}
+
+async function deleteTaskFromModal() {
+  if (!_editTaskId) return;
+  if (!confirm('¿Eliminar esta tarea? Esta acción no se puede deshacer.')) return;
+  const id = _editTaskId;
+  closeEditTaskModal();
+  // Quitar de memoria
+  tasksData        = tasksData.filter(t => String(t.id) !== String(id));
+  tasksProgressData= tasksProgressData.filter(t => String(t.id) !== String(id));
+  renderTasksPanel(); renderTareasPage(); renderVenturesDetail();
+  await sb.from('tasks').delete().eq('id', id);
+  logActivity('eliminó una tarea');
+}
+// ── Fin edición de tarea ────────────────────────────────────────────────────
 
 // ── NAV ──
 function setPage(id) {
