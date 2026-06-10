@@ -3333,8 +3333,15 @@ function openExecutorDayPanel(dateStr) {
         <button class="kanban-action-btn" onclick="moveExecutorTask('${t.id}','pendiente')" style="color:var(--text3);">↩</button>`;
       if (col.key === 'en_publicacion') btns = `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado</button>`;
       const vCardColor = getVentureColor(t.venture_id);
+      const brief = t.brief || taskBriefMap[t.id];
+      const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
+      const isChild = !!t.parent_task_id;
       return `<div class="kanban-card" style="border-left:3px solid ${vCardColor};">
-        <div class="kanban-card-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        <div class="kanban-card-title">
+          ${isChild ? '<span style="font-size:9px;color:var(--text3);margin-right:3px;">└</span>' : ''}
+          ${escapeHtml(cleanTaskTitle(t.titulo))}
+          ${hasBrief ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;margin-left:4px;vertical-align:middle;" onclick="openTaskBriefModal('${t.id}',true)">Brief</span>` : ''}
+        </div>
         <div class="kanban-card-meta">
           <span style="color:${PRIO_COLOR[t.prioridad]||PRIO_COLOR.media};">${t.prioridad||'media'}</span>
           ${t.ventureObj ? `<span>${t.ventureObj.emoji} ${escapeHtml(t.ventureObj.nombre)}</span>` : ''}
@@ -5326,9 +5333,16 @@ function renderVenturesDetail() {
         actionBtns = `<button class="kanban-action-btn kanban-action-approve" onclick="kanbanOwnerComplete('${t.id}')">✓ Completar</button>`;
       }
 
+      const tBrief = t.brief || taskBriefMap[t.id];
+      const tHasBrief = tBrief && Object.values(tBrief).some(v => String(v||'').trim());
+      const tIsChild = !!t.parent_task_id;
       return `
       <div class="kanban-card ${canDrag ? '' : 'kanban-locked'}" ${canDrag ? `draggable="true" ondragstart="onVentureKanbanDragStart(event, '${t.id}')"` : ''}>
-        <div class="kanban-card-title">${escapeHtml(cleanTaskTitle(t.titulo))}</div>
+        <div class="kanban-card-title">
+          ${tIsChild ? '<span style="font-size:9px;color:var(--text3);margin-right:3px;">└</span>' : ''}
+          ${escapeHtml(cleanTaskTitle(t.titulo))}
+          ${tHasBrief ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;margin-left:4px;vertical-align:middle;" onclick="openTaskBriefModal('${t.id}',${currentUserRole==='executor'?'true':'false'})">Brief</span>` : ''}
+        </div>
         <div class="kanban-card-meta">
           <span>${escapeHtml((t.prioridad||'media').toUpperCase())}</span>
           ${t.fecha_limite ? `<span>${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
