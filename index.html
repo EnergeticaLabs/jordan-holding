@@ -5708,8 +5708,8 @@ function renderTareasPage() {
           ${!isChild ? `<button class="task-action-btn" style="font-size:9px;padding:1px 6px;" onclick="openTaskModalForParent('${t.id}')">+ Sub</button>` : ''}
         </div>
         <div class="task-meta">
-          <div class="priority-dot p-${t.prioridad}"></div>
-          <span>${t.prioridad.charAt(0).toUpperCase()+t.prioridad.slice(1)}</span>
+          <div class="priority-dot p-${t.prioridad||'media'}"></div>
+          <span>${(t.prioridad||'media').charAt(0).toUpperCase()+(t.prioridad||'media').slice(1)}</span>
           <span class="task-state-chip state-${escapeHtml(t.estado || 'pendiente')}">${escapeHtml(getTaskStateLabel(t.estado || 'pendiente'))}</span>
           ${t.ventures?`<span class="task-venture-tag">${t.ventures.emoji} ${t.ventures.nombre}</span>`:'<span class="task-venture-tag">Sin venture</span>'}
           ${t.fecha_limite?`<span>📅 ${formatDate(t.fecha_limite)}</span>`:''}
@@ -5990,8 +5990,10 @@ function loadNotesTodayOrder() { try { notesTodayManualOrder = JSON.parse(localS
 function saveNotesTodayOrder() { localStorage.setItem(getNotesTodayOrderKey(), JSON.stringify(notesTodayManualOrder)); }
 function moveNoteToday(id, dir) {
   loadNotesTodayOrder();
-  if (!notesTodayManualOrder.length) {
-    notesTodayManualOrder = document.querySelectorAll('#notes-today-list [data-tid]') ? [...document.querySelectorAll('#notes-today-list [data-tid]')].map(el=>el.dataset.tid) : notesTodayData.map(t=>t.id);
+  // Siempre construir desde DOM actual para evitar IDs obsoletos de localStorage
+  const domIds = [...document.querySelectorAll('#notes-today-list [data-tid]')].map(el => el.dataset.tid);
+  if (!notesTodayManualOrder.length || !notesTodayManualOrder.includes(id)) {
+    notesTodayManualOrder = domIds.length ? domIds : notesTodayData.map(t => String(t.id));
   }
   const idx = notesTodayManualOrder.indexOf(id);
   if (idx === -1) return;
