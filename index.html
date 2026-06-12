@@ -5776,6 +5776,16 @@ function renderVenturesDetail() {
   // Inyectar notas vía textContent para no interpretar HTML
   const taEl = document.getElementById('venture-notes-textarea');
   if (taEl) taEl.value = selected.notas_libres || '';
+
+  // Sincronizar notas desde DB en segundo plano (para cross-device sync)
+  sb.from('ventures').select('notas_libres').eq('id', selected.id).single().then(({ data }) => {
+    if (!data) return;
+    const ta = document.getElementById('venture-notes-textarea');
+    if (!ta || document.activeElement === ta) return;
+    const v = venturesData.find(v => String(v.id) === String(selected.id));
+    if (v) v.notas_libres = data.notas_libres || '';
+    ta.value = data.notas_libres || '';
+  });
 }
 
 // ── KANBAN ACCIONES POR ROL ──────────────────────────────────────
@@ -5933,8 +5943,12 @@ function renderTareasPage() {
     ${children.map(c => renderTaskRow(c, true)).join('')}`;
   };
 
-  const consolidatedKanban = currentUserRole === 'owner' ? renderOwnerConsolidatedKanban() : '';
-  el.innerHTML= consolidatedKanban + `<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
+  let consolidatedKanban = '';
+  if (currentUserRole === 'owner') {
+    try { consolidatedKanban = renderOwnerConsolidatedKanban(); }
+    catch(e) { console.error('[Mi Kanban] error al renderizar kanban consolidado:', e); }
+  }
+  el.innerHTML = consolidatedKanban + `<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
 }
 
 function getTaskStateLabel(state) {
