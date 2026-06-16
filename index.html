@@ -4798,25 +4798,42 @@ function renderOwnerConsolidatedKanban() {
   if (!tasksData.length) return '';
 
   const COLS = [
-    { key:'pendiente',   label:'Pendiente',   color:'var(--border)' },
-    { key:'en_progreso', label:'En progreso', color:'var(--blue,#60a5fa)' },
-    { key:'completado',  label:'Completado',  color:'var(--green,#4ade80)' },
+    { key:'pendiente',      label:'Pendiente',    color:'var(--border)' },
+    { key:'en_progreso',    label:'En progreso',  color:'var(--blue,#60a5fa)' },
+    { key:'en_revision',    label:'En revisión',  color:'var(--amber,#f59e0b)' },
+    { key:'en_aprobacion',  label:'Aprobación',   color:'var(--purple,#a78bfa)' },
+    { key:'en_publicacion', label:'Por publicar', color:'#38bdf8' },
+    { key:'completado',     label:'Completado',   color:'var(--green,#4ade80)' },
   ];
   const PRIO_COLOR = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
-
-  // Extraer nombre de asignado del título
-  const getAssignee = (titulo) => {
-    const m = (titulo||'').match(/@([\w-]+)/);
-    return m ? m[1] : null;
-  };
+  const getAssignee = (titulo) => { const m = (titulo||'').match(/@([\w-]+)/); return m ? m[1] : null; };
 
   const renderCard = (t) => {
-    const col = ownerKanbanCol(t.estado);
-    const vColor = getVentureColor(t.venture_id);
-    const brief = t.brief || taskBriefMap[t.id];
+    const estado  = t.estado || 'pendiente';
+    const vColor  = getVentureColor(t.venture_id);
+    const brief   = t.brief || taskBriefMap[t.id];
     const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
     const assignee = getAssignee(t.titulo);
-    const vName = t.ventures ? `${t.ventures.emoji||''} ${t.ventures.nombre}` : '';
+    const vName   = t.ventures ? `${t.ventures.emoji||''} ${t.ventures.nombre}` : '';
+
+    let btns = '';
+    if (estado === 'pendiente') {
+      btns = `<button class="kanban-action-btn" onclick="moveTaskInVentureKanban('${t.id}','en_progreso')">▶ Iniciar</button>`;
+    } else if (estado === 'en_progreso') {
+      btns = `<button class="kanban-action-btn" onclick="kanbanSendToReview('${t.id}')">📤 A revisión</button>
+              <button class="kanban-action-btn" onclick="moveTaskInVentureKanban('${t.id}','pendiente')" style="color:var(--text3)">↩</button>`;
+    } else if (estado === 'en_revision') {
+      btns = `<button class="kanban-action-btn kanban-action-approve" onclick="kanbanManagerApprove('${t.id}')">✓ Aprobar</button>
+              <button class="kanban-action-btn kanban-action-return" onclick="kanbanManagerReturn('${t.id}')">↩ Devolver</button>`;
+    } else if (estado === 'en_aprobacion') {
+      btns = `<button class="kanban-action-btn kanban-action-approve" onclick="kanbanOwnerApprove('${t.id}')">✓ A publicar</button>
+              <button class="kanban-action-btn kanban-action-return" onclick="kanbanOwnerReturn('${t.id}')">↩ Devolver</button>`;
+    } else if (estado === 'en_publicacion') {
+      btns = `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado</button>`;
+    } else if (estado === 'completado') {
+      btns = `<button class="kanban-action-btn" onclick="moveTaskInVentureKanban('${t.id}','pendiente')" style="color:var(--text3);font-size:9px;">↩ Reabrir</button>`;
+    }
+
     return `<div class="kanban-card" style="border-left:3px solid ${vColor};position:relative;">
       <span style="position:absolute;top:4px;right:4px;font-size:10px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;opacity:.6;" onclick="openEditTaskModal('${t.id}')">✎</span>
       <div class="kanban-card-title" style="padding-right:22px;">
@@ -4829,19 +4846,14 @@ function renderOwnerConsolidatedKanban() {
         ${assignee ? `<span style="color:var(--text3);">@${escapeHtml(assignee)}</span>` : ''}
         ${t.fecha_limite ? `<span>${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
       </div>
-      <div class="kanban-card-actions" style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">
-        ${col !== 'en_progreso' ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','en_progreso','${t.venture_id||''}')">▶</button>` : ''}
-        ${col !== 'pendiente'   ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','pendiente','${t.venture_id||''}')" style="color:var(--text3)">↩</button>` : ''}
-        ${col !== 'completado'  ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','completado','${t.venture_id||''}')">✓</button>` : ''}
-        <button class="kanban-action-btn" style="margin-left:auto;color:var(--text3);font-size:9px;" onclick="ownerDelegateTask('${t.id}')">Delegar →</button>
-      </div>
+      ${btns ? `<div class="kanban-card-actions" style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">${btns}</div>` : ''}
     </div>`;
   };
 
   const colsHtml = COLS.map(c => {
-    const colTasks = tasksData.filter(t => ownerKanbanCol(t.estado) === c.key);
+    const colTasks = tasksData.filter(t => (t.estado||'pendiente') === c.key);
     const cards = colTasks.map(renderCard).join('') || '<div class="kanban-empty">—</div>';
-    return `<div class="kanban-col" style="border-top:3px solid ${c.color};min-width:200px;">
+    return `<div class="kanban-col" style="border-top:3px solid ${c.color};min-width:185px;">
       <div class="kanban-col-header"><span>${c.label}</span><span class="kanban-count">${colTasks.length}</span></div>
       <div class="kanban-col-body">${cards}</div>
     </div>`;
@@ -4853,7 +4865,7 @@ function renderOwnerConsolidatedKanban() {
       <span style="font-size:10px;color:var(--text3);">${tasksData.length} tarea${tasksData.length!==1?'s':''} · click para colapsar</span>
     </div>
     <div class="panel-body" style="overflow-x:auto;">
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(200px,1fr));gap:10px;">${colsHtml}</div>
+      <div style="display:grid;grid-template-columns:repeat(6,minmax(185px,1fr));gap:8px;">${colsHtml}</div>
     </div>
   </div>`;
 }
