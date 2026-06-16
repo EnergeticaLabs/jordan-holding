@@ -1956,7 +1956,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     <div class="topbar-nav">
       <button class="nav-btn" data-page="dashboard" onclick="setPage('dashboard')">Dashboard</button>
       <button class="nav-btn" data-page="ventures" onclick="setPage('ventures')">Ventures</button>
-      <button class="nav-btn" data-page="tareas" onclick="setPage('tareas')">Tareas</button>
+      <button class="nav-btn" data-page="tareas" onclick="setPage('tareas');renderTareasPage()">Tareas</button>
       <button class="nav-btn active" data-page="notas" onclick="setPage('notas')">Notas</button>
       <button class="nav-btn" data-page="equipo" onclick="setPage('equipo')">Equipo</button>
       <button class="nav-btn" data-page="mi-horario" onclick="setPage('mi-horario')">Mi Horario</button>
@@ -1994,7 +1994,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <div class="sidebar-item" data-page="mi-horario" onclick="setPage('mi-horario');closeSidebar()">
           <span class="sidebar-icon">⏱</span>Mi Horario
         </div>
-        <div class="sidebar-item" data-page="tareas" onclick="setPage('tareas');closeSidebar()">
+        <div class="sidebar-item" data-page="tareas" onclick="setPage('tareas');renderTareasPage();closeSidebar()">
           <span class="sidebar-icon">✓</span>Tareas
           <span class="sidebar-badge" id="sb-tareas">—</span>
         </div>
@@ -5907,7 +5907,30 @@ async function moveTaskInVentureKanban(taskId, nextState) {
 
 function renderTareasPage() {
   const el = document.getElementById('tareas-list');
-  if (!el) return;
+
+  // ── DEBUG INMEDIATO: escribe en el DOM antes de cualquier otra lógica ──
+  if (el) {
+    el.innerHTML = `<div id="_dbg_tareas" style="padding:10px 14px;background:#1a1200;border:1px solid #ca8a04;border-radius:8px;font-size:11px;font-family:monospace;color:#fde68a;line-height:1.9;margin-bottom:10px;">
+      <b style="color:#fbbf24;">🔍 DEBUG TAREAS — iniciando…</b><br>
+      Si ves esto, la función SÍ se ejecuta.<br>
+      Cargando datos…
+    </div>`;
+  }
+
+  // ── WRAPPER try/catch global ──
+  try {
+    _renderTareasPageInner(el);
+  } catch(e) {
+    if (el) el.innerHTML = `<div style="padding:14px;background:#3f1111;border:1px solid #ef4444;border-radius:8px;font-size:11px;font-family:monospace;color:#fca5a5;line-height:1.9;">
+      <b style="font-size:12px;">💥 ERROR en renderTareasPage</b><br>
+      ${escapeHtml(String(e))}<br>
+      Stack: ${escapeHtml((e?.stack||'').slice(0,400))}
+    </div>`;
+  }
+}
+
+function _renderTareasPageInner(el) {
+  if (!el) { console.warn('[renderTareasPage] tareas-list no encontrado en el DOM'); return; }
   const filteredTasks = getQuickFilteredTasks(tasksData);
   const filterLabel = getQuickFilterLabel();
   const subtitleBase = currentUserRole === 'executor'
@@ -5922,13 +5945,14 @@ function renderTareasPage() {
   const _sample = tasksData.slice(0,5).map(t =>
     `id:${String(t.id||'').slice(0,8)} estado:<b>${t.estado}</b> ptid:<b>${JSON.stringify(t.parent_task_id)}</b> "<i>${escapeHtml((t.titulo||'').slice(0,30))}</i>"`
   ).join('<br>');
-  const _kanbanErr = (() => { try { renderOwnerConsolidatedKanban(); return '—'; } catch(e){ return e.message; } })();
+  let _kanbanErr = '—';
+  try { renderOwnerConsolidatedKanban(); } catch(e) { _kanbanErr = e?.message || String(e); }
   const _dbg = `<div style="${_dbgStyle}">
     <b style="color:#fbbf24;font-size:12px;">🔍 DEBUG TAREAS — ${new Date().toLocaleTimeString()}</b><br>
     rol: <b>${currentUserRole}</b> &nbsp;·&nbsp; user: <b>${window.currentUser?.email||'(sin sesión)'}</b><br>
     tasksData: <b>${tasksData.length}</b> &nbsp;·&nbsp; filteredTasks: <b>${filteredTasks.length}</b> &nbsp;·&nbsp; parentTasks: <b>${_parentCount}</b><br>
-    filtro activo: <b>${filterLabel||'ninguno'}</b> &nbsp;·&nbsp; quickFilter var: <b>${typeof currentTasksQuickFilter!=='undefined'?currentTasksQuickFilter:'undefined'}</b><br>
-    kanban consolidado: <b>${_kanbanErr}</b><br>
+    filtro: <b>${filterLabel||'ninguno'}</b> &nbsp;·&nbsp; quickFilter: <b>${typeof currentTasksQuickFilter!=='undefined'?String(currentTasksQuickFilter):'undefined'}</b><br>
+    renderOwnerConsolidatedKanban: <b>${_kanbanErr}</b><br>
     tasksData[0..4]:<br>${_sample||'<span style="color:#f87171">(array vacío)</span>'}
   </div>`;
   // ─────────────────────────────────────────────────────────────
