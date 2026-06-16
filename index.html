@@ -5088,16 +5088,9 @@ async function saveVentureNotes(ventureId, text) {
   const v = venturesData.find(v => String(v.id) === String(ventureId));
   if (v) v.notas_libres = text;
 
-  // Debug visual: mostrar que se está enviando
-  const _ind = document.getElementById('venture-notes-save-indicator');
-  const _sync = document.getElementById('venture-notes-sync-status');
-  if (_ind) { _ind.style.display=''; _ind.style.color='#f59e0b'; _ind.textContent = `⏳ Guardando… (${text.length} chars → ventureId: ${ventureId})`; }
-
   const { data: updData, error } = await sb.from('ventures').update({ notas_libres: text }).eq('id', ventureId).select('id,notas_libres');
   if (error) {
     console.error('[DEBUG notas] ERROR al guardar:', error.message, error);
-    if (_ind) { _ind.style.color='#ef4444'; _ind.textContent = `⚠ Error al guardar: ${error.message} (code: ${error.code||'?'})`; }
-    if (_sync) { _sync.style.color='#f87171'; _sync.textContent = `❌ Error: ${error.message}`; }
     const errEl = document.getElementById('venture-notes-save-err');
     if (!errEl) {
       const d = document.createElement('div');
@@ -5109,10 +5102,6 @@ async function saveVentureNotes(ventureId, text) {
       errEl.textContent = '⚠ Error al guardar: ' + error.message;
     }
   } else {
-    const savedChars = (updData?.[0]?.notas_libres||'').length;
-    console.log('[DEBUG notas] guardado OK:', updData);
-    if (_ind) { _ind.style.color='#4ade80'; _ind.textContent = `✓ Guardado en DB (${savedChars} chars confirmados)`; setTimeout(()=>{ if(_ind) _ind.style.display='none'; }, 3000); }
-    if (_sync) { _sync.style.color='#86efac'; _sync.textContent = `✓ Guardado OK — ${savedChars} chars en DB`; }
     document.getElementById('venture-notes-save-err')?.remove();
   }
 }
@@ -5766,15 +5755,9 @@ function renderVenturesDetail() {
       </div>
       <div id="venture-tab-notas" ${(!notasActiva) ? 'style="display:none"' : ''}>
         <div class="venture-notes-area">
-          <div id="venture-notes-debug" style="padding:8px 12px;background:#1a1200;border:1px solid #ca8a04;border-radius:6px;font-size:11px;font-family:monospace;color:#fde68a;line-height:1.7;margin-bottom:8px;">
-            <b style="color:#fbbf24;">🔍 DEBUG NOTAS</b> — venture: <b>${selected.id}</b><br>
-            notas_libres en memoria: <b>${(selected.notas_libres||'').length} chars</b><br>
-            Estado sync: <span id="venture-notes-sync-status" style="color:#86efac;">esperando carga DB…</span>
-          </div>
           <textarea id="venture-notes-textarea" class="venture-notes-textarea"
             placeholder="Escribe libremente sobre este venture. Selecciona texto para enviarlo al inbox."
             oninput="scheduleVentureNotesSave('${selected.id}', this.value)"></textarea>
-          <div id="venture-notes-save-indicator" style="font-size:10px;color:var(--text3);margin-top:4px;display:none;"></div>
           <div class="venture-notes-actions">
             <span class="venture-notes-hint">Selecciona texto (o línea actual) y envía al inbox.</span>
             <button type="button" class="btn btn-secondary btn-send-note-inbox" onclick="sendNoteSelectionToInbox()">→ Inbox libre</button>
@@ -5810,15 +5793,8 @@ function renderVenturesDetail() {
   if (taEl) taEl.value = selected.notas_libres || '';
 
   // Sincronizar notas desde DB en segundo plano (para cross-device sync)
-  sb.from('ventures').select('id,notas_libres').eq('id', selected.id).single().then(({ data, error }) => {
-    const _sync = document.getElementById('venture-notes-sync-status');
-    if (error || !data) {
-      console.error('[DEBUG notas] carga inicial DB error:', error);
-      if (_sync) { _sync.style.color='#f87171'; _sync.textContent = `❌ Error carga DB: ${error?.message||'sin datos'}`; }
-      return;
-    }
-    const dbChars = (data.notas_libres||'').length;
-    if (_sync) { _sync.style.color='#86efac'; _sync.textContent = `✓ DB cargada — ${dbChars} chars en DB`; }
+  sb.from('ventures').select('id,notas_libres').eq('id', selected.id).single().then(({ data }) => {
+    if (!data) return;
     const ta = document.getElementById('venture-notes-textarea');
     if (!ta || document.activeElement === ta) return;
     const v = venturesData.find(v => String(v.id) === String(selected.id));
@@ -5940,24 +5916,8 @@ function renderTareasPage() {
   const subEl = document.getElementById('tareas-sub');
   if (subEl) subEl.textContent = filterLabel ? `${subtitleBase} · filtro: ${filterLabel}` : subtitleBase;
 
-  // ── DEBUG VISUAL TAREAS ──────────────────────────────────────
-  const _ds = 'padding:10px 14px;background:#1a1200;border:1px solid #ca8a04;border-radius:8px;font-size:11px;font-family:monospace;color:#fde68a;line-height:1.8;margin-bottom:8px;';
-  const _parentCount = filteredTasks.filter(t => !t.parent_task_id).length;
-  const _sample = filteredTasks.slice(0,4).map(t =>
-    `<span style="color:#86efac">${String(t.id).slice(0,8)}</span> ptid=<b>${JSON.stringify(t.parent_task_id)}</b> estado=<b>${t.estado}</b> "${(t.titulo||'').slice(0,28)}"`
-  ).join('<br>');
-  const _dbgHtml = `<div style="${_ds}">
-    <div style="font-weight:700;color:#fbbf24;margin-bottom:4px;">🔍 DEBUG TAREAS — ${new Date().toLocaleTimeString()}</div>
-    currentUserRole: <b>${currentUserRole}</b><br>
-    tasksData.length: <b>${tasksData.length}</b> &nbsp;·&nbsp; filteredTasks.length: <b>${filteredTasks.length}</b> &nbsp;·&nbsp; parentTasks: <b>${_parentCount}</b><br>
-    filtro: <b>${filterLabel||'ninguno'}</b> &nbsp;·&nbsp; quickFilter: <b>${typeof currentTasksQuickFilter!=='undefined'?currentTasksQuickFilter:'¿undefined?'}</b><br>
-    currentUser: <b>${window.currentUser?.email||'(no auth)'}</b><br>
-    ${filteredTasks.length ? 'Primeras tareas:<br>'+_sample : '<span style="color:#f87171">filteredTasks VACÍO — tasksData tampoco tiene datos o el filtro excluye todo</span>'}
-  </div>`;
-  // ──────────────────────────────────────────────────────────────
-
   if (!filteredTasks.length) {
-    el.innerHTML = _dbgHtml + `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div><div class="empty-sub">Crea una nueva tarea para comenzar</div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div><div class="empty-sub">Crea una nueva tarea para comenzar</div></div>`;
     return;
   }
 
@@ -6007,7 +5967,7 @@ function renderTareasPage() {
       consolidatedKanban = `<div style="padding:8px 12px;background:#3f1111;border:1px solid #ef4444;border-radius:6px;font-size:11px;color:#fca5a5;margin-bottom:8px;">⚠ Error en Mi Kanban: ${errMsg}</div>`;
     }
   }
-  el.innerHTML = _dbgHtml + consolidatedKanban + `<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
+  el.innerHTML = consolidatedKanban + `<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
 }
 
 function getTaskStateLabel(state) {
