@@ -4808,6 +4808,8 @@ function renderOwnerConsolidatedKanban() {
   const PRIO_COLOR = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
   const getAssignee = (titulo) => { const m = (titulo||'').match(/@([\w-]+)/); return m ? m[1] : null; };
 
+  const _kanbanIsOwner = currentUserRole === 'owner';
+
   const renderCard = (t) => {
     const estado  = t.estado || 'pendiente';
     const vColor  = getVentureColor(t.venture_id);
@@ -4825,12 +4827,12 @@ function renderOwnerConsolidatedKanban() {
     } else if (estado === 'en_revision') {
       btns = `<button class="kanban-action-btn kanban-action-approve" onclick="kanbanManagerApprove('${t.id}')">✓ Aprobar</button>
               <button class="kanban-action-btn kanban-action-return" onclick="kanbanManagerReturn('${t.id}')">↩ Devolver</button>`;
-    } else if (estado === 'en_aprobacion') {
+    } else if (estado === 'en_aprobacion' && _kanbanIsOwner) {
       btns = `<button class="kanban-action-btn kanban-action-approve" onclick="kanbanOwnerApprove('${t.id}')">✓ A publicar</button>
               <button class="kanban-action-btn kanban-action-return" onclick="kanbanOwnerReturn('${t.id}')">↩ Devolver</button>`;
     } else if (estado === 'en_publicacion') {
       btns = `<button class="kanban-action-btn kanban-action-publish" onclick="kanbanMarkPublished('${t.id}')">✅ Publicado</button>`;
-    } else if (estado === 'completado') {
+    } else if (estado === 'completado' && _kanbanIsOwner) {
       btns = `<button class="kanban-action-btn" onclick="moveTaskInVentureKanban('${t.id}','pendiente')" style="color:var(--text3);font-size:9px;">↩ Reabrir</button>`;
     }
 
@@ -5568,6 +5570,11 @@ function renderVenturesDetail() {
     return;
   }
 
+  // Manager no accede a la pestaña de notas (son notas personales del owner)
+  if (currentUserRole === 'manager' && ventureActiveTab === 'notas') {
+    ventureActiveTab = 'tareas';
+  }
+
   const selected = venturesData.find(v => String(v.id) === String(selectedVentureId)) || venturesData[0];
   const selectedProgress = getVentureProgress(selected);
   const metrics = (selected.venture_metrics || []).sort((a, b) => a.orden - b.orden);
@@ -5756,12 +5763,12 @@ function renderVenturesDetail() {
         </div>
       </div>
       <div class="venture-tabs">
-        <button id="venture-tab-btn-notas" type="button" class="venture-tab ${notasActiva ? 'active' : ''}" onclick="switchVentureTab('notas')">✎ Notas</button>
+        ${isOwner ? `<button id="venture-tab-btn-notas" type="button" class="venture-tab ${notasActiva ? 'active' : ''}" onclick="switchVentureTab('notas')">✎ Notas</button>` : ''}
         <button id="venture-tab-btn-tareas" type="button" class="venture-tab ${(!notasActiva && !redesActiva && !mikanbanActiva) ? 'active' : ''}" onclick="switchVentureTab('tareas')">✓ Tareas</button>
         ${isOwner ? `<button id="venture-tab-btn-mikanban" type="button" class="venture-tab ${mikanbanActiva ? 'active' : ''}" onclick="switchVentureTab('mikanban')">◈ Mi Kanban</button>` : ''}
         <button id="venture-tab-btn-redes" type="button" class="venture-tab ${redesActiva ? 'active' : ''}" onclick="switchVentureTab('redes')">📡 Redes</button>
       </div>
-      <div id="venture-tab-notas" ${(!notasActiva) ? 'style="display:none"' : ''}>
+      <div id="venture-tab-notas" ${(!notasActiva || !isOwner) ? 'style="display:none"' : ''}>
         <div class="venture-notes-area">
           <textarea id="venture-notes-textarea" class="venture-notes-textarea"
             placeholder="Escribe libremente sobre este venture. Selecciona texto para enviarlo al inbox."
@@ -5937,26 +5944,8 @@ function _renderTareasPageInner(el) {
   const subEl = document.getElementById('tareas-sub');
   if (subEl) subEl.textContent = filterLabel ? `${subtitleBase} · filtro: ${filterLabel}` : subtitleBase;
 
-  // ── DEBUG VISUAL ──────────────────────────────────────────────
-  const _dbgStyle = 'padding:10px 14px;background:#1a1200;border:1px solid #ca8a04;border-radius:8px;font-size:11px;font-family:monospace;color:#fde68a;line-height:1.9;margin-bottom:10px;';
-  const _parentCount = filteredTasks.filter(t => !t.parent_task_id).length;
-  const _sample = tasksData.slice(0,5).map(t =>
-    `id:${String(t.id||'').slice(0,8)} estado:<b>${t.estado}</b> ptid:<b>${JSON.stringify(t.parent_task_id)}</b> "<i>${escapeHtml((t.titulo||'').slice(0,30))}</i>"`
-  ).join('<br>');
-  let _kanbanErr = '—';
-  try { renderOwnerConsolidatedKanban(); } catch(e) { _kanbanErr = e?.message || String(e); }
-  const _dbg = `<div style="${_dbgStyle}">
-    <b style="color:#fbbf24;font-size:12px;">🔍 DEBUG TAREAS — ${new Date().toLocaleTimeString()}</b><br>
-    rol: <b>${currentUserRole}</b> &nbsp;·&nbsp; user: <b>${window.currentUser?.email||'(sin sesión)'}</b><br>
-    tasksData: <b>${tasksData.length}</b> &nbsp;·&nbsp; filteredTasks: <b>${filteredTasks.length}</b> &nbsp;·&nbsp; parentTasks: <b>${_parentCount}</b><br>
-    filtro: <b>${filterLabel||'ninguno'}</b> &nbsp;·&nbsp; quickFilter: <b>${typeof currentTasksQuickFilter!=='undefined'?String(currentTasksQuickFilter):'undefined'}</b><br>
-    renderOwnerConsolidatedKanban: <b>${_kanbanErr}</b><br>
-    tasksData[0..4]:<br>${_sample||'<span style="color:#f87171">(array vacío)</span>'}
-  </div>`;
-  // ─────────────────────────────────────────────────────────────
-
   if (!filteredTasks.length) {
-    el.innerHTML = _dbg + `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div><div class="empty-sub">Crea una nueva tarea para comenzar</div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div><div class="empty-sub">Crea una nueva tarea para comenzar</div></div>`;
     return;
   }
 
@@ -5998,12 +5987,12 @@ function _renderTareasPageInner(el) {
   };
 
   let consolidatedKanban = '';
-  if (currentUserRole === 'owner') {
+  if (currentUserRole === 'owner' || currentUserRole === 'manager') {
     try { consolidatedKanban = renderOwnerConsolidatedKanban(); }
     catch(e) {
       const errMsg = e?.message || String(e);
-      console.error('[Mi Kanban] error al renderizar kanban consolidado:', e);
-      consolidatedKanban = `<div style="padding:8px 12px;background:#3f1111;border:1px solid #ef4444;border-radius:6px;font-size:11px;color:#fca5a5;margin-bottom:8px;">⚠ Error en Mi Kanban: ${errMsg}</div>`;
+      console.error('[Kanban consolidado] error al renderizar:', e);
+      consolidatedKanban = `<div style="padding:8px 12px;background:#3f1111;border:1px solid #ef4444;border-radius:6px;font-size:11px;color:#fca5a5;margin-bottom:8px;">⚠ Error en Kanban: ${errMsg}</div>`;
     }
   }
   el.innerHTML = consolidatedKanban + `<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
