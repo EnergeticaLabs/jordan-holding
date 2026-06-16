@@ -4795,70 +4795,66 @@ function renderOwnerMiniKanbanTab(ventureId) {
 }
 
 function renderOwnerConsolidatedKanban() {
-  const PRIO_COLOR = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
-  const ownTasks = tasksData.filter(t => isOwnerOwnTask(t));
-  if (!ownTasks.length) return '';
-
-  // Agrupar por venture
-  const byVenture = {};
-  ownTasks.forEach(t => {
-    const key = t.venture_id || '__sin__';
-    if (!byVenture[key]) byVenture[key] = { venture: t.ventures, tasks: [] };
-    byVenture[key].tasks.push(t);
-  });
+  if (!tasksData.length) return '';
 
   const COLS = [
     { key:'pendiente',   label:'Pendiente',   color:'var(--border)' },
     { key:'en_progreso', label:'En progreso', color:'var(--blue,#60a5fa)' },
     { key:'completado',  label:'Completado',  color:'var(--green,#4ade80)' },
   ];
+  const PRIO_COLOR = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
 
-  const ventureBlocks = Object.entries(byVenture).map(([vId, { venture, tasks }]) => {
-    const renderCard = (t) => {
-      const col = ownerKanbanCol(t.estado);
-      const brief = t.brief || taskBriefMap[t.id];
-      const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
-      return `<div class="kanban-card" style="border-left:3px solid ${PRIO_COLOR[t.prioridad]||PRIO_COLOR.media};position:relative;">
-        <span style="position:absolute;top:4px;right:4px;font-size:10px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;opacity:.6;" onclick="openEditTaskModal('${t.id}')">✎</span>
-        <div class="kanban-card-title" style="padding-right:22px;">
-          ${escapeHtml(cleanTaskTitle(t.titulo))}
-          ${hasBrief ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;margin-left:4px;" onclick="openTaskBriefModal('${t.id}')">Brief</span>` : ''}
-        </div>
-        <div class="kanban-card-meta">
-          <span style="color:${PRIO_COLOR[t.prioridad]||PRIO_COLOR.media};">${t.prioridad||'media'}</span>
-          ${t.fecha_limite ? `<span>${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
-        </div>
-        <div class="kanban-card-actions" style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">
-          ${col !== 'en_progreso' ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','en_progreso','${vId}')">▶</button>` : ''}
-          ${col !== 'pendiente'   ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','pendiente','${vId}')" style="color:var(--text3)">↩</button>` : ''}
-          ${col !== 'completado'  ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','completado','${vId}')">✓</button>` : ''}
-          <button class="kanban-action-btn" style="margin-left:auto;color:var(--text3);font-size:9px;" onclick="ownerDelegateTask('${t.id}')">Delegar →</button>
-        </div>
-      </div>`;
-    };
+  // Extraer nombre de asignado del título
+  const getAssignee = (titulo) => {
+    const m = (titulo||'').match(/@([\w-]+)/);
+    return m ? m[1] : null;
+  };
 
-    const colsHtml = COLS.map(c => {
-      const colTasks = tasks.filter(t => ownerKanbanCol(t.estado) === c.key);
-      const cards = colTasks.map(renderCard).join('') || '<div class="kanban-empty">—</div>';
-      return `<div class="kanban-col" style="border-top:3px solid ${c.color};min-width:160px;">
-        <div class="kanban-col-header"><span>${c.label}</span><span class="kanban-count">${colTasks.length}</span></div>
-        <div class="kanban-col-body">${cards}</div>
-      </div>`;
-    }).join('');
+  const renderCard = (t) => {
+    const col = ownerKanbanCol(t.estado);
+    const vColor = getVentureColor(t.venture_id);
+    const brief = t.brief || taskBriefMap[t.id];
+    const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
+    const assignee = getAssignee(t.titulo);
+    const vName = t.ventures ? `${t.ventures.emoji||''} ${t.ventures.nombre}` : '';
+    return `<div class="kanban-card" style="border-left:3px solid ${vColor};position:relative;">
+      <span style="position:absolute;top:4px;right:4px;font-size:10px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;opacity:.6;" onclick="openEditTaskModal('${t.id}')">✎</span>
+      <div class="kanban-card-title" style="padding-right:22px;">
+        ${escapeHtml(cleanTaskTitle(t.titulo))}
+        ${hasBrief ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;margin-left:4px;" onclick="openTaskBriefModal('${t.id}')">Brief</span>` : ''}
+      </div>
+      <div class="kanban-card-meta">
+        ${vName ? `<span style="color:${vColor};font-size:9px;font-weight:600;">${escapeHtml(vName)}</span>` : ''}
+        <span style="color:${PRIO_COLOR[t.prioridad]||PRIO_COLOR.media};">${t.prioridad||'media'}</span>
+        ${assignee ? `<span style="color:var(--text3);">@${escapeHtml(assignee)}</span>` : ''}
+        ${t.fecha_limite ? `<span>${escapeHtml(formatDate(t.fecha_limite))}</span>` : ''}
+      </div>
+      <div class="kanban-card-actions" style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">
+        ${col !== 'en_progreso' ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','en_progreso','${t.venture_id||''}')">▶</button>` : ''}
+        ${col !== 'pendiente'   ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','pendiente','${t.venture_id||''}')" style="color:var(--text3)">↩</button>` : ''}
+        ${col !== 'completado'  ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','completado','${t.venture_id||''}')">✓</button>` : ''}
+        <button class="kanban-action-btn" style="margin-left:auto;color:var(--text3);font-size:9px;" onclick="ownerDelegateTask('${t.id}')">Delegar →</button>
+      </div>
+    </div>`;
+  };
 
-    const vLabel = venture ? `${venture.emoji || ''} ${escapeHtml(venture.nombre)}` : 'Sin venture';
-    return `<div style="margin-bottom:14px;">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">${vLabel}</div>
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(160px,1fr));gap:8px;">${colsHtml}</div>
+  const colsHtml = COLS.map(c => {
+    const colTasks = tasksData.filter(t => ownerKanbanCol(t.estado) === c.key);
+    const cards = colTasks.map(renderCard).join('') || '<div class="kanban-empty">—</div>';
+    return `<div class="kanban-col" style="border-top:3px solid ${c.color};min-width:200px;">
+      <div class="kanban-col-header"><span>${c.label}</span><span class="kanban-count">${colTasks.length}</span></div>
+      <div class="kanban-col-body">${cards}</div>
     </div>`;
   }).join('');
 
   return `<div class="panel" style="margin-bottom:12px;">
     <div class="panel-header" style="cursor:pointer;user-select:none;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
-      <span>◈ Mi Kanban personal</span>
-      <span style="font-size:10px;color:var(--text3);">${ownTasks.length} tarea${ownTasks.length!==1?'s':''} propias</span>
+      <span>◈ Kanban general</span>
+      <span style="font-size:10px;color:var(--text3);">${tasksData.length} tarea${tasksData.length!==1?'s':''} · click para colapsar</span>
     </div>
-    <div class="panel-body" style="overflow-x:auto;">${ventureBlocks}</div>
+    <div class="panel-body" style="overflow-x:auto;">
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(200px,1fr));gap:10px;">${colsHtml}</div>
+    </div>
   </div>`;
 }
 
@@ -5908,16 +5904,6 @@ async function moveTaskInVentureKanban(taskId, nextState) {
 function renderTareasPage() {
   const el = document.getElementById('tareas-list');
 
-  // ── DEBUG INMEDIATO: escribe en el DOM antes de cualquier otra lógica ──
-  if (el) {
-    el.innerHTML = `<div id="_dbg_tareas" style="padding:10px 14px;background:#1a1200;border:1px solid #ca8a04;border-radius:8px;font-size:11px;font-family:monospace;color:#fde68a;line-height:1.9;margin-bottom:10px;">
-      <b style="color:#fbbf24;">🔍 DEBUG TAREAS — iniciando…</b><br>
-      Si ves esto, la función SÍ se ejecuta.<br>
-      Cargando datos…
-    </div>`;
-  }
-
-  // ── WRAPPER try/catch global ──
   try {
     _renderTareasPageInner(el);
   } catch(e) {
@@ -6008,7 +5994,7 @@ function _renderTareasPageInner(el) {
       consolidatedKanban = `<div style="padding:8px 12px;background:#3f1111;border:1px solid #ef4444;border-radius:6px;font-size:11px;color:#fca5a5;margin-bottom:8px;">⚠ Error en Mi Kanban: ${errMsg}</div>`;
     }
   }
-  el.innerHTML = _dbg + consolidatedKanban + `<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
+  el.innerHTML = consolidatedKanban + `<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
 }
 
 function getTaskStateLabel(state) {
