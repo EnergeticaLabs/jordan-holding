@@ -5916,8 +5916,25 @@ function renderTareasPage() {
   const subEl = document.getElementById('tareas-sub');
   if (subEl) subEl.textContent = filterLabel ? `${subtitleBase} · filtro: ${filterLabel}` : subtitleBase;
 
+  // ── DEBUG VISUAL ──────────────────────────────────────────────
+  const _dbgStyle = 'padding:10px 14px;background:#1a1200;border:1px solid #ca8a04;border-radius:8px;font-size:11px;font-family:monospace;color:#fde68a;line-height:1.9;margin-bottom:10px;';
+  const _parentCount = filteredTasks.filter(t => !t.parent_task_id).length;
+  const _sample = tasksData.slice(0,5).map(t =>
+    `id:${String(t.id||'').slice(0,8)} estado:<b>${t.estado}</b> ptid:<b>${JSON.stringify(t.parent_task_id)}</b> "<i>${escapeHtml((t.titulo||'').slice(0,30))}</i>"`
+  ).join('<br>');
+  const _kanbanErr = (() => { try { renderOwnerConsolidatedKanban(); return '—'; } catch(e){ return e.message; } })();
+  const _dbg = `<div style="${_dbgStyle}">
+    <b style="color:#fbbf24;font-size:12px;">🔍 DEBUG TAREAS — ${new Date().toLocaleTimeString()}</b><br>
+    rol: <b>${currentUserRole}</b> &nbsp;·&nbsp; user: <b>${window.currentUser?.email||'(sin sesión)'}</b><br>
+    tasksData: <b>${tasksData.length}</b> &nbsp;·&nbsp; filteredTasks: <b>${filteredTasks.length}</b> &nbsp;·&nbsp; parentTasks: <b>${_parentCount}</b><br>
+    filtro activo: <b>${filterLabel||'ninguno'}</b> &nbsp;·&nbsp; quickFilter var: <b>${typeof currentTasksQuickFilter!=='undefined'?currentTasksQuickFilter:'undefined'}</b><br>
+    kanban consolidado: <b>${_kanbanErr}</b><br>
+    tasksData[0..4]:<br>${_sample||'<span style="color:#f87171">(array vacío)</span>'}
+  </div>`;
+  // ─────────────────────────────────────────────────────────────
+
   if (!filteredTasks.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div><div class="empty-sub">Crea una nueva tarea para comenzar</div></div>`;
+    el.innerHTML = _dbg + `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div><div class="empty-sub">Crea una nueva tarea para comenzar</div></div>`;
     return;
   }
 
@@ -5967,7 +5984,7 @@ function renderTareasPage() {
       consolidatedKanban = `<div style="padding:8px 12px;background:#3f1111;border:1px solid #ef4444;border-radius:6px;font-size:11px;color:#fca5a5;margin-bottom:8px;">⚠ Error en Mi Kanban: ${errMsg}</div>`;
     }
   }
-  el.innerHTML = consolidatedKanban + `<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
+  el.innerHTML = _dbg + consolidatedKanban + `<div class="panel"><div class="panel-body">${parentTasks.map(t => renderTaskRow(t)).join('')}</div></div>`;
 }
 
 function getTaskStateLabel(state) {
