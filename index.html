@@ -4420,7 +4420,7 @@ async function loadRoleAccess(profile) {
 
 function getAllowedPagesByRole() {
   if (currentUserRole === 'executor') return ['tareas', 'mi-horario', 'ventures'];
-  if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'notas', 'calendario', 'horarios'];
+  if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'calendario', 'horarios'];
   return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo', 'calendario', 'horarios'];
 }
 
@@ -4431,9 +4431,11 @@ function applyRoleVisibility() {
     el.classList.toggle('is-hidden', !allowedPages.has(page));
   });
 
-  // Ocultar botón + Nueva tarea para executor (no se asigna tareas)
+  // Solo owner crea tareas manualmente desde la UI.
   const newTaskBtn = document.querySelector('#page-tareas .btn.btn-primary-sm');
-  if (newTaskBtn) newTaskBtn.style.display = currentUserRole === 'executor' ? 'none' : '';
+  if (newTaskBtn) newTaskBtn.style.display = currentUserRole === 'owner' ? '' : 'none';
+  const dashNewTaskBtn = document.querySelector('#page-dashboard .header-actions .btn.btn-primary-sm');
+  if (dashNewTaskBtn) dashNewTaskBtn.style.display = currentUserRole === 'owner' ? '' : 'none';
 
   // Renombrar "Mi Horario" → "Calendario" en el sidebar para executor
   const miHorarioSidebarItem = document.querySelector('.sidebar-item[data-page="mi-horario"]');
@@ -4733,7 +4735,7 @@ function renderOwnerMiniKanban(ventureId) {
     const brief = t.brief || taskBriefMap[t.id];
     const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
     return `<div class="kanban-card" style="border-left:3px solid ${PRIO_COLOR[t.prioridad]||PRIO_COLOR.media};position:relative;">
-      <span style="position:absolute;top:4px;right:4px;font-size:10px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;opacity:.6;" onclick="openEditTaskModal('${t.id}')">✎</span>
+      ${_kanbanIsOwner ? `<span style="position:absolute;top:4px;right:4px;font-size:10px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;opacity:.6;" onclick="openEditTaskModal('${t.id}')">✎</span>` : ''}
       <div class="kanban-card-title" style="padding-right:22px;">
         ${escapeHtml(cleanTaskTitle(t.titulo))}
         ${hasBrief ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;margin-left:4px;" onclick="openTaskBriefModal('${t.id}')">Brief</span>` : ''}
@@ -4837,7 +4839,7 @@ function renderOwnerConsolidatedKanban() {
     }
 
     return `<div class="kanban-card" style="border-left:3px solid ${vColor};position:relative;">
-      <span style="position:absolute;top:4px;right:4px;font-size:10px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;opacity:.6;" onclick="openEditTaskModal('${t.id}')">✎</span>
+      ${_kanbanIsOwner ? `<span style="position:absolute;top:4px;right:4px;font-size:10px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;opacity:.6;" onclick="openEditTaskModal('${t.id}')">✎</span>` : ''}
       <div class="kanban-card-title" style="padding-right:22px;">
         ${escapeHtml(cleanTaskTitle(t.titulo))}
         ${hasBrief ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;margin-left:4px;" onclick="openTaskBriefModal('${t.id}')">Brief</span>` : ''}
@@ -8557,7 +8559,7 @@ async function deleteTaskFromModal() {
 function setPage(id) {
   const allowedPages = getAllowedPagesByRole();
   if (!allowedPages.includes(id)) {
-    id = allowedPages[0] || 'notas';
+    id = allowedPages[0] || 'dashboard';
   }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
