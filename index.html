@@ -3555,7 +3555,7 @@ function openNewEventModal(isoStart) {
 }
 
 function openEditEventModal(id) {
-  const ev = calNativeEvents.find(e => e.id === id);
+  const ev = calNativeEvents.find(e => String(e.id) === String(id));
   if (!ev) return;
   const modal = document.getElementById('cal-event-modal');
   document.getElementById('cal-event-modal-title').textContent = 'Editar evento';
@@ -3727,7 +3727,7 @@ async function saveCalEvent() {
   // Recuperar gcalId existente si es edición
   let existingMeta = {};
   if (editId) {
-    const ev = calNativeEvents.find(e => e.id === editId);
+    const ev = calNativeEvents.find(e => String(e.id) === String(editId));
     try { if (ev?.color) existingMeta = JSON.parse(ev.color); } catch(_){}
   }
 
@@ -3743,7 +3743,7 @@ async function saveCalEvent() {
     venture: venturesData.find(v => v.id === venture_id) || null
   };
   if (editId) {
-    const idx = calNativeEvents.findIndex(e => e.id === editId);
+    const idx = calNativeEvents.findIndex(e => String(e.id) === String(editId));
     if (idx >= 0) calNativeEvents[idx] = optimisticEv;
   } else {
     calNativeEvents.push(optimisticEv);
@@ -3761,14 +3761,14 @@ async function saveCalEvent() {
       error = res.error; savedId = res.data?.id;
     }
     if (error) {
-      if (!editId) calNativeEvents = calNativeEvents.filter(e => e.id !== tempId);
+      if (!editId) calNativeEvents = calNativeEvents.filter(e => String(e.id) !== String(tempId));
       else await loadCalNativeEvents();
       renderCalendario();
       alert('Error al guardar: ' + error.message);
       return;
     }
     if (!editId && savedId) {
-      const idx = calNativeEvents.findIndex(e => e.id === tempId);
+      const idx = calNativeEvents.findIndex(e => String(e.id) === String(tempId));
       if (idx >= 0) calNativeEvents[idx].id = savedId;
     }
     // GCal sync en background
@@ -3783,7 +3783,7 @@ async function saveCalEvent() {
         if (syncData.gcalEventId) {
           const newMeta = { ...meta, gcalId: syncData.gcalEventId };
           await sb.from('cal_events').update({ color: JSON.stringify(newMeta) }).eq('id', savedId);
-          const idx = calNativeEvents.findIndex(e => e.id === savedId);
+          const idx = calNativeEvents.findIndex(e => String(e.id) === String(savedId));
           if (idx >= 0) calNativeEvents[idx].color = JSON.stringify(newMeta);
         }
       } catch(_) {}
@@ -3794,11 +3794,11 @@ async function saveCalEvent() {
 async function deleteCalEvent() {
   const editId = document.getElementById('cal-ev-edit-id').value;
   if (!editId || !confirm('¿Eliminar este evento?')) return;
-  const ev = calNativeEvents.find(e => e.id === editId);
+  const ev = calNativeEvents.find(e => String(e.id) === String(editId));
   let gcalId = null;
   try { if (ev?.color) gcalId = JSON.parse(ev.color)?.gcalId; } catch(_){}
   // OPTIMISTA: quitar del array y cerrar inmediatamente
-  calNativeEvents = calNativeEvents.filter(e => e.id !== editId);
+  calNativeEvents = calNativeEvents.filter(e => String(e.id) !== String(editId));
   document.getElementById('cal-event-modal').style.display = 'none';
   renderCalendario();
   // Borrar en background
