@@ -906,6 +906,20 @@ select.form-input option { background: var(--surface2); color: var(--text); }
   transition: background .15s;
 }
 .inbox-schedule-slot:hover { background: var(--surface3); color: var(--text); border-color: var(--border2); }
+.inbox-schedule-slot-wrap { display: grid; grid-template-columns: 44px 1fr; gap: 6px; align-items: stretch; }
+.inbox-schedule-slot-time { font-size: 10px; color: var(--text3); display: flex; align-items: center; justify-content: flex-end; }
+.inbox-schedule-slot.busy,
+.inbox-schedule-slot[aria-disabled="true"] {
+  cursor: default;
+  border-color: rgba(96,165,250,0.35);
+  background: rgba(96,165,250,0.12);
+  color: #93c5fd;
+}
+.inbox-schedule-slot.unavailable {
+  cursor: default;
+  border-style: dashed;
+  opacity: .55;
+}
 .inbox-schedule-empty { font-size: 11px; color: var(--text3); padding: 4px 0; }
 .inbox-schedule-loading { font-size: 11px; color: var(--text3); padding: 4px 0; }
 .notes-inline-suggestions {
@@ -7490,25 +7504,95 @@ async function scheduleInboxNote() {
 
     const allSlots = data.slots || [];
 
-    // Agrupar por día
+    // Mapa por día + slot para construir una vista de agenda (libre/ocupado)
     const dayMap = {};
+    const slotByKey = new Map();
+    const slotKey = (day, hhmm) => `${day}|${hhmm}`;
+    const dayInLima = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+    const timeInLima = iso => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Lima' });
+
     for (const s of allSlots) {
-      const key = s.dayKey || s.start.slice(0, 10);
-      if (!dayMap[key]) dayMap[key] = { header: s.dayLabel || key, slots: [] };
-      dayMap[key].slots.push(s);
+      const day = dayInLima(s.start);
+      const hhmm = timeInLima(s.start);
+      if (!dayMap[day]) {
+        dayMap[day] = {
+          header: new Date(s.start).toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/Lima' }),
+          free: new Set(),
+          busyEvents: []
+        };
+      }
+      dayMap[day].free.add(hhmm);
+      slotByKey.set(slotKey(day, hhmm), s);
     }
-    slots.innerHTML = Object.values(dayMap).map(day =>
-      `<div class="inbox-schedule-day-col">
-        <div class="inbox-schedule-day-header">${escapeHtml(day.header)}</div>
-        <div class="inbox-schedule-day-slots">${
-          day.slots.map(s =>
-            `<button class="inbox-schedule-slot" onmousedown="event.preventDefault()"
-              onclick='confirmScheduleSlot(${JSON.stringify(s.start)}, ${JSON.stringify(s.end)}, ${JSON.stringify(eventTitle)}, ${JSON.stringify(ownerId)})'
-            >${escapeHtml(s.label)}</button>`
-          ).join('')
-        }</div>
-      </div>`
-    ).join('');
+
+    // Traer eventos reales para mostrar "ocupado" en la misma grilla
+    try {
+      if (allSlots.length) {
+        const min = allSlots[0].start;
+        const max = allSlots[allSlots.length - 1].end || allSlots[allSlots.length - 1].start;
+        const busyRes = await fetch(`/api/calendar/events?user_id=${ownerId}&time_min=${encodeURIComponent(min)}&time_max=${encodeURIComponent(max)}`);
+        const busyData = await busyRes.json();
+        const busyEvents = busyData?.connected ? (busyData.events || []) : [];
+        for (const ev of busyEvents) {
+          if (ev.allDay || !ev.start || !ev.end) continue;
+          const day = dayInLima(ev.start);
+          if (!dayMap[day]) continue;
+          dayMap[day].busyEvents.push({
+            title: ev.title || 'Ocupado',
+            start: new Date(ev.start),
+            end: new Date(ev.end)
+          });
+        }
+      }
+    } catch (_) {
+      // Si falla esta consulta, mostramos al menos los slots libres.
+    }
+
+    const TIME_ROWS = [];
+    for (let h = 7; h <= 21; h++) TIME_ROWS.push(`${String(h).padStart(2, '0')}:00`);
+
+    const dayKeys = Object.keys(dayMap).sort();
+    if (!dayKeys.length) {
+      slots.innerHTML = '<span class="inbox-schedule-empty">No hay huecos disponibles en los próximos días.</span>';
+      return;
+    }
+
+    const isBusyAt = (day, hhmm, events) => {
+      const rowStart = new Date(`${day}T${hhmm}:00-05:00`);
+      const rowEnd = new Date(rowStart.getTime() + 60 * 60000);
+      return events.find(ev => ev.start < rowEnd && ev.end > rowStart) || null;
+    };
+
+    slots.innerHTML = dayKeys.map(day => {
+      const d = dayMap[day];
+      const rows = TIME_ROWS.map(hhmm => {
+        const free = d.free.has(hhmm);
+        const busyEv = isBusyAt(day, hhmm, d.busyEvents);
+        const slot = slotByKey.get(slotKey(day, hhmm));
+        if (free && slot) {
+          return `<div class="inbox-schedule-slot-wrap">
+            <div class="inbox-schedule-slot-time">${hhmm}</div>
+            <button class="inbox-schedule-slot" onmousedown="event.preventDefault()"
+              onclick='confirmScheduleSlot(${JSON.stringify(slot.start)}, ${JSON.stringify(slot.end)}, ${JSON.stringify(eventTitle)}, ${JSON.stringify(ownerId)})'>Libre</button>
+          </div>`;
+        }
+        if (busyEv) {
+          return `<div class="inbox-schedule-slot-wrap" title="${escapeHtml(busyEv.title)}">
+            <div class="inbox-schedule-slot-time">${hhmm}</div>
+            <div class="inbox-schedule-slot busy" aria-disabled="true">Ocupado · ${escapeHtml(busyEv.title)}</div>
+          </div>`;
+        }
+        return `<div class="inbox-schedule-slot-wrap">
+          <div class="inbox-schedule-slot-time">${hhmm}</div>
+          <div class="inbox-schedule-slot unavailable" aria-disabled="true">No disponible</div>
+        </div>`;
+      }).join('');
+
+      return `<div class="inbox-schedule-day-col">
+        <div class="inbox-schedule-day-header">${escapeHtml(d.header)}</div>
+        <div class="inbox-schedule-day-slots">${rows}</div>
+      </div>`;
+    }).join('');
 
   } catch (e) {
     slots.innerHTML = `<span class="inbox-schedule-empty">Error al obtener disponibilidad.</span>`;
