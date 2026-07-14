@@ -3883,7 +3883,7 @@ function renderWeekView() {
         const dur = (new Date(ev.fin)-new Date(ev.inicio))/60000;
         const h = Math.max(20, Math.min(dur*(HOUR_PX/60), TOTAL_H-top));
         const vLabel = ev.venture ? ` · ${escapeHtml(ev.venture.emoji||'')}${escapeHtml(ev.venture.nombre)}` : '';
-        return `<div class="cal-event-block cal-event-native" data-event-id="${ev.id}" style="top:${top}px;height:${h}px;z-index:2;" title="${escapeHtml(ev.titulo)}">${escapeHtml(ev.titulo)}${vLabel}</div>`;
+        return `<div class="cal-event-block cal-event-native" data-event-id="${ev.id}" onclick="event.stopPropagation();openEditEventModal('${ev.id}')" style="top:${top}px;height:${h}px;z-index:2;" title="${escapeHtml(ev.titulo)}">${escapeHtml(ev.titulo)}${vLabel}</div>`;
       }).join('');
 
     // GCal overlay
@@ -3944,14 +3944,16 @@ function renderWeekView() {
 }
 
 function handleCalColumnClick(e, dayIso, calStart) {
+  const targetEl = e.target instanceof Element ? e.target : e.target?.parentElement;
+  if (!targetEl) return;
   // Event delegation: check if clicked on a native event block
-  const block = e.target.closest('[data-event-id]');
+  const block = targetEl.closest('[data-event-id]');
   if (block) {
     openEditEventModal(block.dataset.eventId);
     return;
   }
   // Ignore clicks on gcal/presence blocks
-  if (e.target.closest('.cal-event-block')) return;
+  if (targetEl.closest('.cal-event-block')) return;
   // Click on empty area → new event
   const col = e.currentTarget;
   const rect = col.getBoundingClientRect();
@@ -3966,8 +3968,10 @@ function handleCalColumnClick(e, dayIso, calStart) {
 }
 
 function handleCalDayClick(e, dayIso, calStart) {
+  const targetEl = e.target instanceof Element ? e.target : e.target?.parentElement;
+  if (!targetEl) return;
   // If click landed on an event block, let its own handler take over
-  if (e.target.closest('.cal-event-block')) return;
+  if (targetEl.closest('.cal-event-block')) return;
   // Calculate hour from click position within the column
   const col = e.currentTarget;
   const rect = col.getBoundingClientRect();
