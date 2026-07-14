@@ -3534,6 +3534,8 @@ function openNewEventModal(isoStart) {
   document.getElementById('cal-ev-notas').value = '';
   document.getElementById('cal-ev-edit-id').value = '';
   document.getElementById('cal-ev-delete-btn').style.display = 'none';
+  document.getElementById('cal-ev-venture').disabled = false;
+  document.getElementById('cal-ev-recurrencia').disabled = false;
   document.getElementById('cal-ev-recurrencia').value = 'none';
   _calRecSelectedDays = [];
   calOnRepeatChange('none');
@@ -3559,6 +3561,8 @@ function openEditEventModal(id) {
   if (!ev) return;
   const modal = document.getElementById('cal-event-modal');
   document.getElementById('cal-event-modal-title').textContent = 'Editar evento';
+  document.getElementById('cal-ev-venture').disabled = false;
+  document.getElementById('cal-ev-recurrencia').disabled = false;
   document.getElementById('cal-ev-titulo').value = ev.titulo;
   document.getElementById('cal-ev-notas').value = ev.notas || '';
   document.getElementById('cal-ev-edit-id').value = ev.id;
@@ -3578,6 +3582,34 @@ function openEditEventModal(id) {
   const toLocal = d => new Date(new Date(d).getTime() - new Date(d).getTimezoneOffset()*60000).toISOString().slice(0,16);
   document.getElementById('cal-ev-inicio').value = toLocal(ev.inicio);
   document.getElementById('cal-ev-fin').value = toLocal(ev.fin);
+  modal.style.display = 'flex';
+}
+
+function openEditImportedEventModal(gcalId) {
+  const ev = calEvents.find(e => String(e.id || e.gcalEventId || '') === String(gcalId));
+  if (!ev) return;
+  const modal = document.getElementById('cal-event-modal');
+  document.getElementById('cal-event-modal-title').textContent = 'Editar evento importado';
+  document.getElementById('cal-ev-titulo').value = ev.title || '';
+  document.getElementById('cal-ev-notas').value = ev.description || '';
+  document.getElementById('cal-ev-edit-id').value = `gcal:${gcalId}`;
+  document.getElementById('cal-ev-delete-btn').style.display = '';
+
+  // En eventos importados no se gestiona venture ni recurrencia local.
+  const ventureSel = document.getElementById('cal-ev-venture');
+  ventureSel.innerHTML = '<option value="">— Evento importado (Google Calendar) —</option>';
+  ventureSel.value = '';
+  ventureSel.disabled = true;
+  document.getElementById('cal-ev-recurrencia').value = 'none';
+  document.getElementById('cal-ev-recurrencia').disabled = true;
+  _calRecSelectedDays = [];
+  calOnRepeatChange('none');
+
+  const toLocal = d => new Date(new Date(d).getTime() - new Date(d).getTimezoneOffset()*60000).toISOString().slice(0,16);
+  document.getElementById('cal-ev-inicio').value = toLocal(ev.start);
+  document.getElementById('cal-ev-fin').value = toLocal(ev.end);
+  calSetReminders([30]);
+  _setCalModalGcalHint();
   modal.style.display = 'flex';
 }
 
@@ -3724,6 +3756,48 @@ async function saveCalEvent() {
   const inicioISO = new Date(inicio).toISOString();
   const finISO    = new Date(fin).toISOString();
 
+  // Edición directa de evento importado de Google Calendar.
+  if (String(editId).startsWith('gcal:')) {
+    const gcalId = String(editId).slice(5);
+    const prev = calEvents.find(e => String(e.id || e.gcalEventId || '') === String(gcalId));
+    const next = {
+      ...(prev || {}),
+      id: prev?.id || gcalId,
+      title: titulo,
+      start: inicioISO,
+      end: finISO,
+      description: notas || ''
+    };
+    const idx = calEvents.findIndex(e => String(e.id || e.gcalEventId || '') === String(gcalId));
+    if (idx >= 0) calEvents[idx] = next;
+    document.getElementById('cal-event-modal').style.display = 'none';
+    renderCalendario();
+
+    try {
+      const syncRes = await fetch('/api/calendar/sync-event', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentProfileId,
+          gcalEventId: gcalId,
+          titulo,
+          inicio: inicioISO,
+          fin: finISO,
+          notas,
+          rrule: null,
+          recordatorios: rems
+        })
+      });
+      const syncData = await syncRes.json();
+      if (!syncRes.ok || syncData?.error) throw new Error(syncData?.error || 'No se pudo sincronizar el evento');
+      loadCalendarioEvents();
+    } catch (e) {
+      if (idx >= 0 && prev) calEvents[idx] = prev;
+      renderCalendario();
+      alert('No se pudo actualizar el evento importado: ' + (e?.message || e));
+    }
+    return;
+  }
+
   // Recuperar gcalId existente si es edición
   let existingMeta = {};
   if (editId) {
@@ -3794,6 +3868,28 @@ async function saveCalEvent() {
 async function deleteCalEvent() {
   const editId = document.getElementById('cal-ev-edit-id').value;
   if (!editId || !confirm('¿Eliminar este evento?')) return;
+
+  if (String(editId).startsWith('gcal:')) {
+    const gcalId = String(editId).slice(5);
+    const prev = [...calEvents];
+    calEvents = calEvents.filter(e => String(e.id || e.gcalEventId || '') !== String(gcalId));
+    document.getElementById('cal-event-modal').style.display = 'none';
+    renderCalendario();
+    try {
+      const res = await fetch('/api/calendar/sync-event', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentProfileId, gcalEventId: gcalId })
+      });
+      if (!res.ok) throw new Error('No se pudo eliminar en Google Calendar');
+      loadCalendarioEvents();
+    } catch (e) {
+      calEvents = prev;
+      renderCalendario();
+      alert('No se pudo eliminar el evento importado: ' + (e?.message || e));
+    }
+    return;
+  }
+
   const ev = calNativeEvents.find(e => String(e.id) === String(editId));
   let gcalId = null;
   try { if (ev?.color) gcalId = JSON.parse(ev.color)?.gcalId; } catch(_){}
@@ -3890,10 +3986,11 @@ function renderWeekView() {
     const gcalBlocks = calEvents
       .filter(ev => !ev.allDay && ev.start?.slice(0,10)===dayStr)
       .map(ev => {
+        const gcalId = ev.id || ev.gcalEventId || '';
         const top = toPx(ev.start); if (top < -20 || top > TOTAL_H) return '';
         const dur = (new Date(ev.end)-new Date(ev.start))/60000;
         const h = Math.max(20, Math.min(dur*(HOUR_PX/60), TOTAL_H-top));
-        return `<div class="cal-event-block cal-event-gcal" style="top:${top}px;height:${h}px;" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>`;
+        return `<div class="cal-event-block cal-event-gcal" ${gcalId ? `data-gcal-id="${escapeHtml(String(gcalId))}" onclick="event.stopPropagation();openEditImportedEventModal('${escapeHtml(String(gcalId))}')"` : ''} style="top:${top}px;height:${h}px;" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>`;
       }).join('');
 
     // Presence requests
@@ -3946,6 +4043,11 @@ function renderWeekView() {
 function handleCalColumnClick(e, dayIso, calStart) {
   const targetEl = e.target instanceof Element ? e.target : e.target?.parentElement;
   if (!targetEl) return;
+  const gcalBlock = targetEl.closest('[data-gcal-id]');
+  if (gcalBlock) {
+    openEditImportedEventModal(gcalBlock.dataset.gcalId);
+    return;
+  }
   // Event delegation: check if clicked on a native event block
   const block = targetEl.closest('[data-event-id]');
   if (block) {
