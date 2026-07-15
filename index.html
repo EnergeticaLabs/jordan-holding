@@ -2501,6 +2501,15 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <option value="executor">executor</option>
       </select>
     </div>
+    <div class="form-group" id="config-venture-access-group" style="display:none;">
+      <label class="form-label">Acceso a ventures</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);margin-bottom:8px;cursor:pointer;">
+        <input type="checkbox" id="config-venture-access-all" onchange="toggleConfigVentureAccessAll(this.checked)">
+        Acceso transversal (todos los ventures)
+      </label>
+      <div id="config-venture-access-list" style="display:grid;gap:6px;max-height:160px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--surface2);"></div>
+      <div class="empty-sub" style="margin-top:6px;">Si desmarcas acceso transversal, selecciona los ventures que verá este usuario.</div>
+    </div>
     <div class="form-group">
       <label class="form-label">Correo</label>
       <input type="email" class="form-input" id="config-user-email" placeholder="usuario@correo.com">
@@ -2688,6 +2697,8 @@ let calEvents = [];
 let calNativeEvents = [];
 const HOUR_PX_GLOBAL = 28;
 let activeConfigUserId = null;
+let configVentureAccessAll = true;
+let configSelectedVentureIds = new Set();
 const NOTE_PREFIX = '[NOTA] ';
 
 // ── HORARIOS STATE ──
@@ -4519,14 +4530,14 @@ async function loadUserProfile() {
 }
 
 async function loadRoleAccess(profile) {
-  if (!profile?.id || profile.rol !== 'manager') {
+  if (!profile?.id || !['manager', 'executor'].includes(profile.rol)) {
     allowedVentureIds = null;
     return;
   }
 
   const { data, error } = await sb.from('roles_permissions').select('*').eq('user_id', profile.id);
   if (error || !Array.isArray(data) || !data.length) {
-    // Fallback: manager con acceso total si no hay permisos configurados.
+    // Fallback: acceso total si no hay permisos configurados.
     allowedVentureIds = null;
     return;
   }
@@ -4571,7 +4582,7 @@ function applyRoleVisibility() {
 }
 
 function isVentureAllowedForCurrentRole(ventureId) {
-  if (currentUserRole !== 'manager') return true;
+  if (!['manager', 'executor'].includes(currentUserRole)) return true;
   if (!allowedVentureIds || !allowedVentureIds.size) return true;
   return allowedVentureIds.has(String(ventureId));
 }
@@ -4643,7 +4654,7 @@ async function loadTasks() {
     .neq('estado','completado').neq('estado','cancelado')
     .order('fecha_limite', { ascending:true, nullsFirst:false });
   let scopedTasks = data || [];
-  if (currentUserRole === 'manager' && allowedVentureIds && allowedVentureIds.size) {
+  if (['manager', 'executor'].includes(currentUserRole) && allowedVentureIds && allowedVentureIds.size) {
     scopedTasks = scopedTasks.filter(t => t.venture_id && allowedVentureIds.has(String(t.venture_id)));
   }
   if (currentUserRole === 'executor') {
@@ -4656,7 +4667,7 @@ async function loadTasks() {
     .select('id,venture_id,estado,titulo,prioridad,fecha_limite,completado_en,brief,parent_task_id')
     .neq('estado', 'cancelado');
   let scopedProgress = progressData || [];
-  if (currentUserRole === 'manager' && allowedVentureIds && allowedVentureIds.size) {
+  if (['manager', 'executor'].includes(currentUserRole) && allowedVentureIds && allowedVentureIds.size) {
     scopedProgress = scopedProgress.filter(t => t.venture_id && allowedVentureIds.has(String(t.venture_id)));
   }
   if (currentUserRole === 'executor') {
@@ -4829,6 +4840,13 @@ function isOwnerOwnTask(task) {
   return meta.assignees.every(a => normalizeText(a).replace(/\s+/g,'') === ownerNorm);
 }
 
+function isTaskOwnedByCurrentUser(task) {
+  if (currentUserRole === 'owner') return isOwnerOwnTask(task);
+  const meta = parseTaskMeta(task?.titulo || '');
+  if (!meta.assignees.length || !currentUserNameNormalized) return false;
+  return meta.assignees.some(a => normalizeText(a).replace(/\s+/g,'') === currentUserNameNormalized);
+}
+
 // Mapeo de estados reales → 3 columnas del kanban personal
 function ownerKanbanCol(estado) {
   if (!estado || estado === 'pendiente') return 'pendiente';
@@ -4838,10 +4856,11 @@ function ownerKanbanCol(estado) {
 
 function renderOwnerMiniKanban(ventureId) {
   const PRIO_COLOR = { urgente:'#ef4444', alta:'#f97316', media:'#f59e0b', baja:'#6b7280' };
-  const tasks = tasksData.filter(t => String(t.venture_id||'') === String(ventureId) && isOwnerOwnTask(t));
+  const canEdit = currentUserRole === 'owner';
+  const tasks = tasksData.filter(t => String(t.venture_id||'') === String(ventureId) && isTaskOwnedByCurrentUser(t));
   // Incluir completadas del progreso
   const tasksDone = tasksProgressData.filter(t =>
-    String(t.venture_id||'') === String(ventureId) && t.estado === 'completado' && isOwnerOwnTask(t)
+    String(t.venture_id||'') === String(ventureId) && t.estado === 'completado' && isTaskOwnedByCurrentUser(t)
   );
 
   const cols = [
@@ -4855,7 +4874,7 @@ function renderOwnerMiniKanban(ventureId) {
     const brief = t.brief || taskBriefMap[t.id];
     const hasBrief = brief && Object.values(brief).some(v => String(v||'').trim());
     return `<div class="kanban-card" style="border-left:3px solid ${PRIO_COLOR[t.prioridad]||PRIO_COLOR.media};position:relative;">
-      ${_kanbanIsOwner ? `<span style="position:absolute;top:4px;right:4px;font-size:10px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;opacity:.6;" onclick="openEditTaskModal('${t.id}')">✎</span>` : ''}
+      ${canEdit ? `<span style="position:absolute;top:4px;right:4px;font-size:10px;padding:1px 4px;border-radius:3px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;opacity:.6;" onclick="openEditTaskModal('${t.id}')">✎</span>` : ''}
       <div class="kanban-card-title" style="padding-right:22px;">
         ${escapeHtml(cleanTaskTitle(t.titulo))}
         ${hasBrief ? `<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;margin-left:4px;" onclick="openTaskBriefModal('${t.id}')">Brief</span>` : ''}
@@ -4868,7 +4887,7 @@ function renderOwnerMiniKanban(ventureId) {
         ${col !== 'en_progreso'  ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','en_progreso','${ventureId}')">▶</button>` : ''}
         ${col !== 'pendiente'    ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','pendiente','${ventureId}')" style="color:var(--text3)">↩</button>` : ''}
         ${col !== 'completado'   ? `<button class="kanban-action-btn" onclick="ownerMoveTask('${t.id}','completado','${ventureId}')">✓</button>` : ''}
-        <button class="kanban-action-btn" style="margin-left:auto;color:var(--text3);font-size:9px;" onclick="ownerDelegateTask('${t.id}')">Delegar →</button>
+        ${canEdit ? `<button class="kanban-action-btn" style="margin-left:auto;color:var(--text3);font-size:9px;" onclick="ownerDelegateTask('${t.id}')">Delegar →</button>` : ''}
       </div>
     </div>`;
   };
@@ -4886,7 +4905,7 @@ function renderOwnerMiniKanban(ventureId) {
 
   return `<div style="padding:12px;">
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-      <button class="btn btn-primary-sm" onclick="openTaskModalForVenture('${ventureId}')">+ Tarea propia</button>
+      ${canEdit ? `<button class="btn btn-primary-sm" onclick="openTaskModalForVenture('${ventureId}')">+ Tarea propia</button>` : ''}
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:8px;overflow-x:auto;">${colsHtml}</div>
   </div>`;
@@ -5681,21 +5700,8 @@ function renderVenturesDetail() {
     selectedVentureId = venturesData[0].id;
   }
 
-  // Vista simplificada para executor
-  if (currentUserRole === 'executor') {
-    // resetear pestaña al cambiar de venture
-    if (!window._execVentureTabVenture || window._execVentureTabVenture !== selectedVentureId) {
-      window._execVentureTab = 'tareas';
-      window._execVentureTabVenture = selectedVentureId;
-    }
-    renderExecutorVentureDetail();
-    return;
-  }
-
-  // Manager no accede a la pestaña de notas (son notas personales del owner)
-  if (currentUserRole === 'manager' && ventureActiveTab === 'notas') {
-    ventureActiveTab = 'tareas';
-  }
+  // reset de pestaña por defecto al cambiar de venture
+  if (!ventureActiveTab) ventureActiveTab = 'tareas';
 
   const selected = venturesData.find(v => String(v.id) === String(selectedVentureId)) || venturesData[0];
   const selectedProgress = getVentureProgress(selected);
@@ -5885,12 +5891,12 @@ function renderVenturesDetail() {
         </div>
       </div>
       <div class="venture-tabs">
-        ${isOwner ? `<button id="venture-tab-btn-notas" type="button" class="venture-tab ${notasActiva ? 'active' : ''}" onclick="switchVentureTab('notas')">✎ Notas</button>` : ''}
+        <button id="venture-tab-btn-notas" type="button" class="venture-tab ${notasActiva ? 'active' : ''}" onclick="switchVentureTab('notas')">✎ Notas</button>
         <button id="venture-tab-btn-tareas" type="button" class="venture-tab ${(!notasActiva && !redesActiva && !mikanbanActiva) ? 'active' : ''}" onclick="switchVentureTab('tareas')">✓ Tareas</button>
-        ${isOwner ? `<button id="venture-tab-btn-mikanban" type="button" class="venture-tab ${mikanbanActiva ? 'active' : ''}" onclick="switchVentureTab('mikanban')">◈ Mi Kanban</button>` : ''}
+        <button id="venture-tab-btn-mikanban" type="button" class="venture-tab ${mikanbanActiva ? 'active' : ''}" onclick="switchVentureTab('mikanban')">◈ Mi Kanban</button>
         <button id="venture-tab-btn-redes" type="button" class="venture-tab ${redesActiva ? 'active' : ''}" onclick="switchVentureTab('redes')">📡 Redes</button>
       </div>
-      <div id="venture-tab-notas" ${(!notasActiva || !isOwner) ? 'style="display:none"' : ''}>
+      <div id="venture-tab-notas" ${(!notasActiva) ? 'style="display:none"' : ''}>
         <div class="venture-notes-area">
           <textarea id="venture-notes-textarea" class="venture-notes-textarea"
             placeholder="Escribe libremente sobre este venture. Selecciona texto para enviarlo al inbox."
@@ -5921,7 +5927,7 @@ function renderVenturesDetail() {
           ${isOwner && ventureTasksView === 'lista' ? listaHtml : kanbanHtml}
         </div>
       </div>
-      ${isOwner ? `<div id="venture-tab-mikanban" ${!mikanbanActiva ? 'style="display:none"' : ''}></div>` : ''}
+      <div id="venture-tab-mikanban" ${!mikanbanActiva ? 'style="display:none"' : ''}></div>
       <div id="venture-tab-redes" ${!redesActiva ? 'style="display:none"' : ''}>${redesActiva ? renderSocialConfigTab(selected.id) : ''}</div>
     </div>`;
 
@@ -8268,6 +8274,9 @@ function openUserConfigModal(userId = null) {
   if (authIdEl) authIdEl.value = user?.auth_id || '';
   const roleEl = document.getElementById('config-user-rol');
   if (roleEl) roleEl.value = user?.rol || 'executor';
+  if (roleEl) {
+    roleEl.onchange = () => renderConfigVentureAccessControls(roleEl.value);
+  }
   const emailEl = document.getElementById('config-user-email');
   if (emailEl) emailEl.value = user?.email || '';
   const passEl = document.getElementById('config-user-password');
@@ -8282,7 +8291,79 @@ function openUserConfigModal(userId = null) {
       : 'Para otros usuarios, envía reset por correo (cambio directo bloqueado por seguridad de Supabase).';
   }
 
+  loadConfigVentureAccess(user?.id || null, roleEl?.value || user?.rol || 'executor');
+
   modal.style.display = 'flex';
+}
+
+async function loadConfigVentureAccess(userId, role) {
+  configVentureAccessAll = true;
+  configSelectedVentureIds = new Set();
+
+  if (userId) {
+    const { data } = await sb.from('roles_permissions').select('venture_id').eq('user_id', userId);
+    const ids = (data || []).map(r => String(r.venture_id || '')).filter(Boolean);
+    if (ids.length) {
+      configVentureAccessAll = false;
+      configSelectedVentureIds = new Set(ids);
+    }
+  }
+
+  renderConfigVentureAccessControls(role);
+}
+
+function renderConfigVentureAccessControls(role) {
+  const group = document.getElementById('config-venture-access-group');
+  const allCb = document.getElementById('config-venture-access-all');
+  const list = document.getElementById('config-venture-access-list');
+  if (!group || !allCb || !list) return;
+
+  const canRestrict = role === 'manager' || role === 'executor';
+  group.style.display = canRestrict ? '' : 'none';
+  if (!canRestrict) return;
+
+  allCb.checked = configVentureAccessAll;
+  list.style.display = configVentureAccessAll ? 'none' : 'grid';
+
+  list.innerHTML = (venturesData || []).map(v => {
+    const checked = configSelectedVentureIds.has(String(v.id));
+    return `<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleConfigVentureSelection('${v.id}', this.checked)">
+      <span>${escapeHtml(v.emoji || '')} ${escapeHtml(v.nombre || '')}</span>
+    </label>`;
+  }).join('') || '<div class="empty-sub">No hay ventures cargados.</div>';
+}
+
+function toggleConfigVentureAccessAll(checked) {
+  configVentureAccessAll = !!checked;
+  const list = document.getElementById('config-venture-access-list');
+  if (list) list.style.display = configVentureAccessAll ? 'none' : 'grid';
+}
+
+function toggleConfigVentureSelection(ventureId, checked) {
+  const id = String(ventureId);
+  if (checked) configSelectedVentureIds.add(id);
+  else configSelectedVentureIds.delete(id);
+}
+
+async function saveUserVentureAccess(userId, role) {
+  if (!userId) return;
+
+  // owner siempre tiene acceso transversal
+  if (role === 'owner' || configVentureAccessAll) {
+    await sb.from('roles_permissions').delete().eq('user_id', userId);
+    return;
+  }
+
+  const selected = [...configSelectedVentureIds];
+  if (!selected.length) {
+    throw new Error('Selecciona al menos un venture o activa acceso transversal.');
+  }
+
+  await sb.from('roles_permissions').delete().eq('user_id', userId);
+  const rows = selected.map(ventureId => ({ user_id: userId, venture_id: ventureId }));
+  const { error } = await sb.from('roles_permissions').insert(rows);
+  if (error) throw error;
 }
 
 function closeUserConfigModal(e) {
@@ -8364,7 +8445,7 @@ async function _saveUserConfigImpl() {
       }
     }
 
-    const { error: insertError } = await sb.from('users').insert({ auth_id, nombre, email, rol });
+    const { data: insertedUser, error: insertError } = await sb.from('users').insert({ auth_id, nombre, email, rol }).select('id').single();
     if (insertError) {
       const msg = insertError.message || '';
       const isFk = /users_auth_id_fkey|foreign key/i.test(msg);
@@ -8377,6 +8458,11 @@ async function _saveUserConfigImpl() {
         alert(`No se pudo crear el miembro: ${msg}`);
       }
       return;
+    }
+    try {
+      await saveUserVentureAccess(insertedUser?.id, rol);
+    } catch (permError) {
+      alert(`Miembro creado, pero no se guardaron permisos de ventures: ${permError.message || ''}`);
     }
     await logActivity('agregó un nuevo miembro del equipo');
     await loadUsers();
@@ -8395,6 +8481,11 @@ async function _saveUserConfigImpl() {
     if (profileError) {
       alert(`No se pudo actualizar el perfil interno: ${profileError.message || ''}`);
       return;
+    }
+    try {
+      await saveUserVentureAccess(activeConfigUserId, rol);
+    } catch (permError) {
+      alert(`Perfil actualizado, pero falló guardado de permisos de ventures: ${permError.message || ''}`);
     }
   }
 
