@@ -2508,6 +2508,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         Acceso transversal (todos los ventures)
       </label>
       <div id="config-venture-access-list" style="display:grid;gap:6px;max-height:160px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--surface2);"></div>
+      <div id="config-venture-access-summary" class="empty-sub" style="margin-top:8px;display:none;"></div>
       <div class="empty-sub" style="margin-top:6px;">Si desmarcas acceso transversal, selecciona los ventures que verá este usuario.</div>
     </div>
     <div class="form-group">
@@ -8143,10 +8144,15 @@ function renderTeam() {
   }).join('')}</div>`;
 }
 
-function openTeamMemberPanel(userId) {
+async function openTeamMemberPanel(userId) {
   const u = usersData.find(u => u.id === userId);
   if (!u) return;
   const initials = (u.nombre||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+
+  const allowedVentures = await getUserAllowedVentureNames(userId);
+  const allowedSummary = allowedVentures.length
+    ? allowedVentures.join(' · ')
+    : (u.rol === 'owner' ? 'Acceso total' : 'Sin ventures permitidos');
 
   // Métricas
   const userTasks = tasksProgressData.filter(t => {
@@ -8240,6 +8246,9 @@ function openTeamMemberPanel(userId) {
         </div>
 
         <!-- Horario semanal -->
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;margin-bottom:8px;">Permisos por venture</div>
+        <div style="font-size:11px;color:var(--text);margin-bottom:14px;line-height:1.6;">${escapeHtml(allowedSummary)}</div>
+
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;margin-bottom:8px;">Horario semanal</div>
         <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-bottom:16px;">${scheduleGrid}</div>
 
@@ -8263,6 +8272,16 @@ function openTeamMemberPanel(userId) {
   const prev = document.getElementById('team-detail-overlay');
   if (prev) prev.remove();
   document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function getUserAllowedVentureNames(userId) {
+  if (!userId) return [];
+  const { data } = await sb.from('roles_permissions').select('venture_id').eq('user_id', userId);
+  const ids = (data || []).map(r => String(r.venture_id || '')).filter(Boolean);
+  if (!ids.length) return [];
+  return venturesData
+    .filter(v => ids.includes(String(v.id)))
+    .map(v => `${v.emoji || ''} ${v.nombre}`.trim());
 }
 
 function closeTeamMemberPanel(e) {
@@ -8331,6 +8350,7 @@ function renderConfigVentureAccessControls(role) {
   const group = document.getElementById('config-venture-access-group');
   const allCb = document.getElementById('config-venture-access-all');
   const list = document.getElementById('config-venture-access-list');
+  const summaryEl = document.getElementById('config-venture-access-summary');
   if (!group || !allCb || !list) return;
 
   const canRestrict = role === 'manager' || role === 'executor';
@@ -8339,6 +8359,22 @@ function renderConfigVentureAccessControls(role) {
 
   allCb.checked = configVentureAccessAll;
   list.style.display = configVentureAccessAll ? 'none' : 'grid';
+
+  const selectedNames = [...configSelectedVentureIds]
+    .map(id => (venturesData || []).find(v => String(v.id) === String(id)))
+    .filter(Boolean)
+    .map(v => `${v.emoji || ''} ${v.nombre}`);
+
+  if (summaryEl) {
+    if (configVentureAccessAll) {
+      summaryEl.textContent = 'Acceso transversal: ve todos los ventures.';
+    } else if (selectedNames.length) {
+      summaryEl.textContent = 'Ventures permitidos: ' + selectedNames.join(' · ');
+    } else {
+      summaryEl.textContent = 'Sin ventures seleccionados. El usuario no verá ninguno.';
+    }
+    summaryEl.style.display = 'block';
+  }
 
   list.innerHTML = (venturesData || []).map(v => {
     const checked = configSelectedVentureIds.has(String(v.id));
@@ -8353,12 +8389,16 @@ function toggleConfigVentureAccessAll(checked) {
   configVentureAccessAll = !!checked;
   const list = document.getElementById('config-venture-access-list');
   if (list) list.style.display = configVentureAccessAll ? 'none' : 'grid';
+  const role = document.getElementById('config-user-rol')?.value || 'executor';
+  renderConfigVentureAccessControls(role);
 }
 
 function toggleConfigVentureSelection(ventureId, checked) {
   const id = String(ventureId);
   if (checked) configSelectedVentureIds.add(id);
   else configSelectedVentureIds.delete(id);
+  const role = document.getElementById('config-user-rol')?.value || 'executor';
+  renderConfigVentureAccessControls(role);
 }
 
 async function saveUserVentureAccess(userId, role) {
