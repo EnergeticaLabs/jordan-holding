@@ -2217,6 +2217,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
             <div class="panel-title">Miembros del equipo</div>
             <div id="team-panel-actions"></div>
           </div>
+          <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text3);">
+            Para otorgar acceso, abre un miembro y pulsa <strong style="color:var(--text2);">Permisos</strong>. Allí eliges todos los ventures o solo algunos.
+          </div>
           <div class="panel-body" id="team-list"></div>
         </div>
       </div>
@@ -8209,7 +8212,7 @@ async function openTeamMemberPanel(userId) {
             ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openGoalsModal('${userId}')">Objetivos</button>` : ''}
             ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openScheduleBlockModal(null,1,'${userId}')">+ Bloque</button>` : ''}
             ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openAbsenceModal('${userId}')">Ausencia</button>` : ''}
-            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openUserConfigModal('${userId}')">Editar</button>` : ''}
+            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openUserConfigModal('${userId}')">Permisos</button>` : ''}
             <button class="task-action-btn" onclick="closeTeamMemberPanel()">✕</button>
           </div>
         </div>
@@ -8301,7 +8304,7 @@ function openUserConfigModal(userId = null) {
   const modal = document.getElementById('user-config-modal');
   if (!modal) return;
   const title = document.getElementById('user-config-title');
-  if (title) title.textContent = user ? `Editar ${user.nombre || user.email || 'usuario'}` : 'Agregar miembro';
+  if (title) title.textContent = user ? `Permisos y configuración · ${user.nombre || user.email || 'usuario'}` : 'Agregar miembro';
   const nameEl = document.getElementById('config-user-name');
   if (nameEl) nameEl.value = user?.nombre || '';
   const authIdEl = document.getElementById('config-user-authid');
