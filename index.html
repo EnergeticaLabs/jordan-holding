@@ -1503,16 +1503,23 @@ select.form-input option { background: var(--surface2); color: var(--text); }
 .team-detail-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.5);
   display: flex; align-items: flex-end; justify-content: center;
-  z-index: 200; padding: 0;
+  z-index: 200; padding: 12px;
 }
 .team-detail-panel {
   background: var(--surface); border-radius: 16px 16px 0 0;
-  width: 100%; max-width: 700px; max-height: 90vh;
-  overflow-y: auto; padding: 24px;
+  width: min(700px, calc(100vw - 24px)); max-width: 700px; max-height: calc(100vh - 24px);
+  box-sizing: border-box; overflow-y: auto; padding: 24px;
   box-shadow: 0 -4px 32px rgba(0,0,0,0.3);
 }
 .team-detail-header {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.team-detail-header > div:nth-child(2) { min-width: 0; }
+.team-detail-header > div:last-child { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 600px) {
+  .team-detail-overlay { padding: 8px; }
+  .team-detail-panel { width: calc(100vw - 16px); max-height: calc(100vh - 16px); padding: 16px; border-radius: 12px; }
+  .team-detail-header > div:last-child { width: 100%; margin-left: 0; justify-content: flex-start; }
 }
 .team-detail-tabs {
   display: flex; gap: 2px; border-bottom: 1px solid var(--border);
@@ -8209,10 +8216,10 @@ async function openTeamMemberPanel(userId) {
             <div style="font-size:11px;color:var(--text3);">${escapeHtml(u.rol)} · ${escapeHtml(u.email||'')}</div>
           </div>
           <div style="display:flex;gap:6px;">
-            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openGoalsModal('${userId}')">Objetivos</button>` : ''}
-            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openScheduleBlockModal(null,1,'${userId}')">+ Bloque</button>` : ''}
-            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openAbsenceModal('${userId}')">Ausencia</button>` : ''}
-            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="openUserConfigModal('${userId}')">Permisos</button>` : ''}
+            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="closeTeamMemberPanel();openGoalsModal('${userId}')">Objetivos</button>` : ''}
+            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="closeTeamMemberPanel();openScheduleBlockModal(null,1,'${userId}')">+ Bloque</button>` : ''}
+            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="closeTeamMemberPanel();openAbsenceModal('${userId}')">Ausencia</button>` : ''}
+            ${currentUserRole==='owner' ? `<button class="task-action-btn" onclick="closeTeamMemberPanel();openUserConfigModal('${userId}')">Permisos</button>` : ''}
             <button class="task-action-btn" onclick="closeTeamMemberPanel()">✕</button>
           </div>
         </div>
