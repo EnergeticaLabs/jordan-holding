@@ -4446,6 +4446,7 @@ async function loadApp() {
   //    Para otros roles mostramos el app y cargamos en background.
   if (currentUserRole === 'executor') {
     await loadVentures();
+    await loadUsers();
     await loadTasks();
     loadGoals();
     sb.from('work_schedule_blocks').select('*, ventures(nombre,emoji)')
@@ -4482,7 +4483,7 @@ async function loadApp() {
     await loadVentures();
     await Promise.all([loadTasks(), loadActivity(), loadUsers()]);
   } else {
-    await Promise.all([loadActivity(), loadUsers()]);
+    await loadActivity();
   }
   renderDashboard();
   renderTasksPanel();
@@ -4601,6 +4602,11 @@ function isVentureAllowedForCurrentRole(ventureId) {
 
 function taskAssignedToCurrentExecutor(task) {
   if (currentUserRole !== 'executor') return true;
+  return taskAssignedToCurrentMember(task);
+}
+
+function taskAssignedToCurrentMember(task) {
+  if (currentUserRole === 'owner') return true;
   const title = String(task?.titulo || '');
   const meta = parseTaskMeta(title);
   const target = currentUserNameNormalized;
@@ -4707,6 +4713,10 @@ async function loadTasks() {
 async function loadActivity() {
   const panel = document.getElementById('activity-panel');
   if (!panel) return; // executor no tiene dashboard
+  if (currentUserRole !== 'owner') {
+    panel.innerHTML = `<div class="empty-state"><div class="empty-icon">◎</div><div class="empty-text">Actividad restringida</div><div class="empty-sub">El historial general está disponible solo para el owner.</div></div>`;
+    return;
+  }
   const { data } = await sb.from('activity_log')
     .select('*, users(nombre)').order('creado_en',{ascending:false}).limit(8);
   if (!data || data.length===0) {
@@ -4760,7 +4770,7 @@ function renderDashboard() {
     const estadoLabel = {activo:'Activo',building:'Building',planeado:'Planeado',pausado:'Pausado'}[v.estado]||v.estado;
     const pColor = progress>=60?'green':progress>=30?'':'blue';
     return `
-      <div class="venture-card" onclick="openVentureDetails('${v.id}')">
+      <div class="venture-card" onclick="openVentureDetails('${v.id}', true)">
         <div class="venture-card-top">
           <span class="venture-emoji">${v.emoji}</span>
         </div>
@@ -4809,20 +4819,11 @@ function switchVentureTab(tab) {
   if (!notas || !tareas) return;
   notas.style.display  = tab === 'notas'  ? '' : 'none';
   tareas.style.display = tab === 'tareas' ? '' : 'none';
-  // Al abrir notas, recargar desde DB para sincronizar entre dispositivos
+  // Las notas son privadas por perfil y venture.
   if (tab === 'notas') {
-    const card = document.getElementById('ventures-detail')?.querySelector('[id^="venture-detail-"]');
-    const vId = card?.id?.replace('venture-detail-','');
-    if (vId) {
-      sb.from('ventures').select('notas_libres').eq('id', vId).single().then(({ data }) => {
-        if (!data) return;
-        const ta = document.getElementById('venture-notes-textarea');
-        if (!ta || document.activeElement === ta) return; // no pisas si el usuario está escribiendo
-        const v = venturesData.find(v => String(v.id) === String(vId));
-        if (v) v.notas_libres = data.notas_libres || '';
-        ta.value = data.notas_libres || '';
-      });
-    }
+    const selected = venturesData.find(v => String(v.id) === String(selectedVentureId));
+    const ta = document.getElementById('venture-notes-textarea');
+    if (selected && ta && document.activeElement !== ta) ta.value = getPersonalVentureNotes(selected);
   }
   if (redes) {
     redes.style.display = tab === 'redes' ? '' : 'none';
@@ -4855,6 +4856,25 @@ function switchVentureTab(tab) {
 function scheduleVentureNotesSave(ventureId, text) {
   if (ventureNotesSaveTimers[ventureId]) clearTimeout(ventureNotesSaveTimers[ventureId]);
   ventureNotesSaveTimers[ventureId] = setTimeout(() => saveVentureNotes(ventureId, text), 900);
+}
+
+function getVentureNotesStorageKey(ventureId) {
+  const profileKey = currentProfileId || currentUser?.id || 'anonymous';
+  return `vfh-venture-notes-${profileKey}-${ventureId}`;
+}
+
+function getPersonalVentureNotes(venture) {
+  if (!venture) return '';
+  const key = getVentureNotesStorageKey(venture.id);
+  const stored = localStorage.getItem(key);
+  if (stored !== null) return stored;
+
+  // Migrate the existing shared notes only for the owner; members start private.
+  if (currentUserRole === 'owner' && venture.notas_libres) {
+    localStorage.setItem(key, venture.notas_libres);
+    return venture.notas_libres;
+  }
+  return '';
 }
 
 // ── Tarea "propia" del owner: sin @mención de otro miembro (o solo mencionado él mismo) ──
@@ -5262,25 +5282,8 @@ async function savePubDay(ventureId, dayOfWeek) {
 // ── Fin Redes Sociales ──────────────────────────────────────────────────────
 
 async function saveVentureNotes(ventureId, text) {
-  const v = venturesData.find(v => String(v.id) === String(ventureId));
-  if (v) v.notas_libres = text;
-
-  const { data: updData, error } = await sb.from('ventures').update({ notas_libres: text }).eq('id', ventureId).select('id,notas_libres');
-  if (error) {
-    console.error('[DEBUG notas] ERROR al guardar:', error.message, error);
-    const errEl = document.getElementById('venture-notes-save-err');
-    if (!errEl) {
-      const d = document.createElement('div');
-      d.id = 'venture-notes-save-err';
-      d.style.cssText = 'margin-top:6px;padding:6px 10px;background:#3f1111;border:1px solid #ef4444;border-radius:6px;font-size:11px;color:#fca5a5;';
-      d.textContent = '⚠ Error al guardar: ' + error.message;
-      document.getElementById('venture-notes-textarea')?.insertAdjacentElement('afterend', d);
-    } else {
-      errEl.textContent = '⚠ Error al guardar: ' + error.message;
-    }
-  } else {
-    document.getElementById('venture-notes-save-err')?.remove();
-  }
+  localStorage.setItem(getVentureNotesStorageKey(ventureId), text || '');
+  document.getElementById('venture-notes-save-err')?.remove();
 }
 
 function sendNoteSelectionToInbox() {
@@ -5429,7 +5432,10 @@ function taskMatchesVentureTag(task, venture) {
 function renderTasksPanel() {
   const panel = document.getElementById('tasks-panel');
   if (!panel) return; // executor no tiene dashboard
-  const top = tasksData.slice(0,5);
+  const visibleTasks = currentUserRole === 'owner'
+    ? tasksData
+    : tasksData.filter(taskAssignedToCurrentMember);
+  const top = visibleTasks.slice(0,5);
   if (!top.length) { panel.innerHTML=`<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Sin tareas pendientes</div></div>`; return; }
   panel.innerHTML = top.map(t=>`
     <div class="task-item">
@@ -5882,7 +5888,7 @@ function renderVenturesDetail() {
   const notasActiva    = ventureActiveTab === 'notas';
   const redesActiva    = ventureActiveTab === 'redes';
   const mikanbanActiva = ventureActiveTab === 'mikanban';
-  const notasLibres = selected.notas_libres || '';
+  const notasLibres = getPersonalVentureNotes(selected);
   // Cargar config de redes si no está en memoria aún
   if (!ventureSocialConfig.some(r => r.venture_id === selected.id)) {
     loadVentureSocialConfig(selected.id).then(() => {
@@ -5959,17 +5965,7 @@ function renderVenturesDetail() {
 
   // Inyectar notas vía textContent para no interpretar HTML
   const taEl = document.getElementById('venture-notes-textarea');
-  if (taEl) taEl.value = selected.notas_libres || '';
-
-  // Sincronizar notas desde DB en segundo plano (para cross-device sync)
-  sb.from('ventures').select('id,notas_libres').eq('id', selected.id).single().then(({ data }) => {
-    if (!data) return;
-    const ta = document.getElementById('venture-notes-textarea');
-    if (!ta || document.activeElement === ta) return;
-    const v = venturesData.find(v => String(v.id) === String(selected.id));
-    if (v) v.notas_libres = data.notas_libres || '';
-    ta.value = data.notas_libres || '';
-  });
+  if (taEl) taEl.value = notasLibres;
 }
 
 // ── KANBAN ACCIONES POR ROL ──────────────────────────────────────
