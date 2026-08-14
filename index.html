@@ -4536,9 +4536,8 @@ async function loadRoleAccess(profile) {
   }
 
   const { data, error } = await sb.from('roles_permissions').select('*').eq('user_id', profile.id);
-  if (error || !Array.isArray(data) || !data.length) {
-    // Fallback: acceso total si no hay permisos configurados.
-    allowedVentureIds = null;
+  if (error || !Array.isArray(data)) {
+    allowedVentureIds = new Set();
     return;
   }
 
@@ -4546,7 +4545,7 @@ async function loadRoleAccess(profile) {
     .map(row => row.venture_id || row.ventureId || null)
     .filter(Boolean)
     .map(id => String(id));
-  allowedVentureIds = ids.length ? new Set(ids) : null;
+  allowedVentureIds = new Set(ids);
 }
 
 function getAllowedPagesByRole() {
@@ -4583,15 +4582,31 @@ function applyRoleVisibility() {
 
 function isVentureAllowedForCurrentRole(ventureId) {
   if (!['manager', 'executor'].includes(currentUserRole)) return true;
-  if (!allowedVentureIds || !allowedVentureIds.size) return true;
+  if (allowedVentureIds === null) return true; // compatibilidad con perfiles sin permisos aún no explicitados
+  if (!allowedVentureIds) return false;
+  if (!allowedVentureIds.size) return false;
   return allowedVentureIds.has(String(ventureId));
 }
 
 function taskAssignedToCurrentExecutor(task) {
   if (currentUserRole !== 'executor') return true;
-  const meta = parseTaskMeta(task?.titulo || '');
-  if (!meta.assignees.length || !currentUserNameNormalized) return false;
-  return meta.assignees.some(a => normalizeText(a).replace(/\s+/g, '') === currentUserNameNormalized);
+  const title = String(task?.titulo || '');
+  const meta = parseTaskMeta(title);
+  const target = currentUserNameNormalized;
+  if (!target) return false;
+
+  const assigneeMatches = (meta.assignees || []).some(a => {
+    const normalized = normalizeText(a).replace(/\s+/g, '');
+    return normalized === target || normalized.startsWith(target) || target.startsWith(normalized);
+  });
+
+  if (assigneeMatches) return true;
+
+  // Compatibilidad para tareas creadas sin @tag pero con nombre natural en el título.
+  const naturalMatch = normalizeText(title).includes(target);
+  if (!meta.assignees.length && naturalMatch) return true;
+
+  return false;
 }
 
 function getQuickFilteredTasks(items) {
@@ -4654,8 +4669,8 @@ async function loadTasks() {
     .neq('estado','completado').neq('estado','cancelado')
     .order('fecha_limite', { ascending:true, nullsFirst:false });
   let scopedTasks = data || [];
-  if (['manager', 'executor'].includes(currentUserRole) && allowedVentureIds && allowedVentureIds.size) {
-    scopedTasks = scopedTasks.filter(t => t.venture_id && allowedVentureIds.has(String(t.venture_id)));
+  if (['manager', 'executor'].includes(currentUserRole) && allowedVentureIds !== null) {
+    scopedTasks = scopedTasks.filter(t => !t.venture_id || allowedVentureIds.has(String(t.venture_id)));
   }
   if (currentUserRole === 'executor') {
     scopedTasks = scopedTasks.filter(taskAssignedToCurrentExecutor);
@@ -4667,8 +4682,8 @@ async function loadTasks() {
     .select('id,venture_id,estado,titulo,prioridad,fecha_limite,completado_en,brief,parent_task_id')
     .neq('estado', 'cancelado');
   let scopedProgress = progressData || [];
-  if (['manager', 'executor'].includes(currentUserRole) && allowedVentureIds && allowedVentureIds.size) {
-    scopedProgress = scopedProgress.filter(t => t.venture_id && allowedVentureIds.has(String(t.venture_id)));
+  if (['manager', 'executor'].includes(currentUserRole) && allowedVentureIds !== null) {
+    scopedProgress = scopedProgress.filter(t => !t.venture_id || allowedVentureIds.has(String(t.venture_id)));
   }
   if (currentUserRole === 'executor') {
     scopedProgress = scopedProgress.filter(taskAssignedToCurrentExecutor);
@@ -7799,8 +7814,8 @@ async function loadNotesToday() {
     .neq('estado', 'cancelado')
     .order('id', { ascending: false });
   let scopedNotes = data || [];
-  if (currentUserRole === 'manager' && allowedVentureIds && allowedVentureIds.size) {
-    scopedNotes = scopedNotes.filter(t => t.venture_id && allowedVentureIds.has(String(t.venture_id)));
+  if (currentUserRole === 'manager' && allowedVentureIds !== null) {
+    scopedNotes = scopedNotes.filter(t => !t.venture_id || allowedVentureIds.has(String(t.venture_id)));
   }
   if (currentUserRole === 'executor') {
     scopedNotes = scopedNotes.filter(taskAssignedToCurrentExecutor);
