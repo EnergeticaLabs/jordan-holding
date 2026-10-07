@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vfh-v5';
+const CACHE_NAME = 'vfh-v6';
 const APP_SHELL_CACHE = [
   '/',
   '/manifest.json'
@@ -33,6 +33,8 @@ self.addEventListener('fetch', event => {
 
   // No interceptar requests de Supabase (siempre necesitan red)
   if (event.request.url.includes('supabase.co')) return;
+  // Nunca guardar respuestas autenticadas de la API en Cache Storage.
+  if (new URL(event.request.url).pathname.startsWith('/api/')) return;
 
   // Para navegación/documento: siempre intentar red para evitar HTML obsoleto.
   if (isNavigationRequest(event.request)) {

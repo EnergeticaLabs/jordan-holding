@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="VFH">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="/assets/css/signals.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ══════════════════════════════════════════
@@ -2022,6 +2023,9 @@ select.form-input option { background: var(--surface2); color: var(--text); }
         <div class="sidebar-item active" data-page="notas" onclick="setPage('notas');closeSidebar()">
           <span class="sidebar-icon">✎</span>Notas
         </div>
+        <div class="sidebar-item" data-page="signals" onclick="setPage('signals');closeSidebar()">
+          <span class="sidebar-icon">⌁</span>Signal Inbox
+        </div>
         <div class="sidebar-item" data-page="equipo" onclick="setPage('equipo');closeSidebar()">
           <span class="sidebar-icon">◎</span>Equipo
         </div>
@@ -2196,6 +2200,35 @@ select.form-input option { background: var(--surface2); color: var(--text); }
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- SIGNAL INBOX -->
+      <div class="page" id="page-signals">
+        <div class="page-header page-header-title-only">
+          <div class="page-header-copy">
+            <div class="page-title">Signal Inbox</div>
+            <div class="page-sub">Información que puede convertirse en trabajo</div>
+          </div>
+        </div>
+        <div class="signal-layout">
+          <section class="signal-compose panel">
+            <div class="panel-header"><div class="panel-title">Nueva señal</div></div>
+            <form id="signal-form" class="signal-form">
+              <label class="signal-field"><span>Título <small>Opcional</small></span><input id="signal-title" class="form-input" maxlength="180" autocomplete="off"></label>
+              <label class="signal-field"><span>Fuente <small>Opcional</small></span><input id="signal-source" class="form-input" maxlength="160" autocomplete="off" placeholder="ChatGPT, OSINERGMIN, paper..."></label>
+              <label class="signal-field"><span>URL <small>Opcional</small></span><input id="signal-url" class="form-input" type="url" maxlength="2048" placeholder="https://"></label>
+              <label class="signal-field"><span>Contenido</span><textarea id="signal-content" class="form-input signal-content-input" maxlength="50000" required placeholder="Pega aquí la información que quieres analizar..."></textarea></label>
+              <div class="signal-form-footer"><span id="signal-form-status" class="signal-feedback" role="status"></span><div class="signal-form-actions"><button class="btn btn-secondary" type="button" onclick="saveSignal(false)">Guardar</button><button class="btn btn-primary-sm" type="button" onclick="saveSignal(true)">Guardar y analizar</button></div></div>
+            </form>
+          </section>
+          <section class="signal-inbox-column">
+            <div class="panel signal-list-panel">
+              <div class="panel-header"><div class="panel-title">Señales</div><button class="task-action-btn" type="button" onclick="loadSignals()" aria-label="Actualizar señales" title="Actualizar">↻</button></div>
+              <div id="signals-list" class="signal-list" aria-live="polite"></div>
+            </div>
+            <div id="signal-detail" class="signal-detail" aria-live="polite"><div class="panel signal-empty">Selecciona una señal para revisarla.</div></div>
+          </section>
         </div>
       </div>
 
@@ -2382,7 +2415,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeTaskModal()">Cancelar</button>
-      <button class="btn-save" onclick="saveTask()">Guardar tarea</button>
+      <button class="btn-save" onclick="saveTask(this)">Guardar tarea</button>
     </div>
   </div>
 </div>
@@ -2485,7 +2518,7 @@ select.form-input option { background: var(--surface2); color: var(--text); }
     <div class="modal-actions">
       <button class="btn-cancel" style="color:var(--red);border-color:var(--red);margin-right:auto;" onclick="deleteTaskFromModal()">Eliminar</button>
       <button class="btn-cancel" onclick="closeEditTaskModal()">Cancelar</button>
-      <button class="btn-save" onclick="saveEditTaskModal()">Guardar</button>
+      <button class="btn-save" onclick="saveEditTaskModal(this)">Guardar</button>
     </div>
   </div>
 </div>
@@ -2708,7 +2741,7 @@ let calEvents = [];
 let calNativeEvents = [];
 const HOUR_PX_GLOBAL = 28;
 let activeConfigUserId = null;
-let configVentureAccessAll = true;
+let configVentureAccessAll = false;
 let configSelectedVentureIds = new Set();
 const NOTE_PREFIX = '[NOTA] ';
 
@@ -2718,6 +2751,15 @@ let miHorarioOffset = 0;
 let goalsData = [];
 let absencesData = [];
 let hourBankData = [];
+
+window.getSignalAccessToken = async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  return session?.access_token || null;
+};
+window.getSignalContext = () => ({
+  ventures: venturesData.map(({ id, nombre }) => ({ id, nombre })),
+  users: usersData.map(({ id, nombre }) => ({ id, nombre }))
+});
 
 // Mantiene currentUser actualizado cuando Supabase refresca el token automáticamente
 sb.auth.onAuthStateChange((event, session) => {
@@ -4554,6 +4596,7 @@ async function loadRoleAccess(profile) {
   }
 
   const ids = data
+    .filter(row => row.puede_ver === true)
     .map(row => row.venture_id || row.ventureId || null)
     .filter(Boolean)
     .map(id => String(id));
@@ -4563,7 +4606,7 @@ async function loadRoleAccess(profile) {
 function getAllowedPagesByRole() {
   if (currentUserRole === 'executor') return ['tareas', 'mi-horario', 'ventures'];
   if (currentUserRole === 'manager') return ['dashboard', 'ventures', 'tareas', 'calendario', 'horarios'];
-  return ['dashboard', 'ventures', 'tareas', 'notas', 'equipo', 'calendario', 'horarios'];
+  return ['dashboard', 'ventures', 'tareas', 'notas', 'signals', 'equipo', 'calendario', 'horarios'];
 }
 
 function applyRoleVisibility() {
@@ -4607,6 +4650,7 @@ function taskAssignedToCurrentExecutor(task) {
 
 function taskAssignedToCurrentMember(task) {
   if (currentUserRole === 'owner') return true;
+  if (currentProfileId && String(task?.asignado_a || '') === String(currentProfileId)) return true;
   const title = String(task?.titulo || '');
   const meta = parseTaskMeta(title);
   const target = currentUserNameNormalized;
@@ -4696,7 +4740,7 @@ async function loadTasks() {
 
   // Dataset para calcular avance dinamico por venture
   const { data: progressData } = await sb.from('tasks')
-    .select('id,venture_id,estado,titulo,prioridad,fecha_limite,completado_en,brief,parent_task_id')
+    .select('id,venture_id,asignado_a,estado,titulo,prioridad,fecha_limite,completado_en,brief,parent_task_id')
     .neq('estado', 'cancelado');
   let scopedProgress = progressData || [];
   if (['manager', 'executor'].includes(currentUserRole) && allowedVentureIds !== null) {
@@ -6121,6 +6165,7 @@ function _renderTareasPageInner(el) {
           ${hasBrief ? `<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:var(--gold);color:#000;font-weight:600;cursor:pointer;" onclick="openTaskBriefModal('${t.id}')">Brief</span>` : ''}
           ${!isChild ? `<button class="task-action-btn" style="font-size:9px;padding:1px 6px;" onclick="openTaskBriefModal('${t.id}')">📋</button>` : ''}
           ${!isChild ? `<button class="task-action-btn" style="font-size:9px;padding:1px 6px;" onclick="openTaskModalForParent('${t.id}')">+ Sub</button>` : ''}
+          ${currentUserRole === 'owner' && t.signal_id ? `<button class="task-action-btn" style="font-size:9px;padding:1px 6px;" onclick="SignalInbox.openSignal('${t.signal_id}')">Signal</button>` : ''}
         </div>
         <div class="task-meta">
           <div class="priority-dot p-${t.prioridad||'media'}"></div>
@@ -8282,7 +8327,7 @@ async function openTeamMemberPanel(userId) {
 
 async function getUserAllowedVentureNames(userId) {
   if (!userId) return [];
-  const { data } = await sb.from('roles_permissions').select('venture_id').eq('user_id', userId);
+  const { data } = await sb.from('roles_permissions').select('venture_id').eq('user_id', userId).eq('puede_ver', true);
   const ids = (data || []).map(r => String(r.venture_id || '')).filter(Boolean);
   if (!ids.length) return [];
   return venturesData
@@ -8337,15 +8382,16 @@ function openUserConfigModal(userId = null) {
 }
 
 async function loadConfigVentureAccess(userId, role) {
-  configVentureAccessAll = true;
+  configVentureAccessAll = false;
   configSelectedVentureIds = new Set();
 
   if (userId) {
-    const { data } = await sb.from('roles_permissions').select('venture_id').eq('user_id', userId);
-    const ids = (data || []).map(r => String(r.venture_id || '')).filter(Boolean);
+    const { data } = await sb.from('roles_permissions').select('venture_id,puede_ver').eq('user_id', userId);
+    const ids = (data || []).filter(r => r.puede_ver === true).map(r => String(r.venture_id || '')).filter(Boolean);
     if (ids.length) {
-      configVentureAccessAll = false;
       configSelectedVentureIds = new Set(ids);
+      const allVentureIds = venturesData.map(venture => String(venture.id));
+      configVentureAccessAll = allVentureIds.length > 0 && allVentureIds.every(id => configSelectedVentureIds.has(id));
     }
   }
 
@@ -8411,18 +8457,20 @@ async function saveUserVentureAccess(userId, role) {
   if (!userId) return;
 
   // owner siempre tiene acceso transversal
-  if (role === 'owner' || configVentureAccessAll) {
-    await sb.from('roles_permissions').delete().eq('user_id', userId);
+  if (role === 'owner') {
+    const { error } = await sb.from('roles_permissions').delete().eq('user_id', userId);
+    if (error) throw error;
     return;
   }
 
-  const selected = [...configSelectedVentureIds];
-  if (!selected.length) {
-    throw new Error('Selecciona al menos un venture o activa acceso transversal.');
-  }
+  const selected = configVentureAccessAll
+    ? venturesData.map(venture => String(venture.id))
+    : [...configSelectedVentureIds];
 
-  await sb.from('roles_permissions').delete().eq('user_id', userId);
-  const rows = selected.map(ventureId => ({ user_id: userId, venture_id: ventureId }));
+  const { error: deleteError } = await sb.from('roles_permissions').delete().eq('user_id', userId);
+  if (deleteError) throw deleteError;
+  if (!selected.length) return;
+  const rows = selected.map(ventureId => ({ user_id: userId, venture_id: ventureId, puede_ver: true }));
   const { error } = await sb.from('roles_permissions').insert(rows);
   if (error) throw error;
 }
@@ -8758,7 +8806,15 @@ function closeTaskModal(e) {
   }
 }
 
-async function saveTask() {
+async function withButtonLoading(btn, action) {
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add('loading');
+  try { return await action(); }
+  finally { btn.disabled = false; btn.classList.remove('loading'); }
+}
+
+async function saveTask(btn) {
   const titulo    = document.getElementById('task-titulo').value.trim();
   const venture   = document.getElementById('task-venture').value;
   const asignado  = document.getElementById('task-asignado').value;
@@ -8774,21 +8830,26 @@ async function saveTask() {
     ? `${titulo} ${assignedTag}`
     : titulo;
 
-  const creatorProfileId = await ensureCurrentProfileId();
-  if (!creatorProfileId) {
-    alert('No se encontro tu perfil interno en users. Revisa tu registro en la base de datos.');
-    return;
-  }
+  await withButtonLoading(btn, async () => {
+    const creatorProfileId = await ensureCurrentProfileId();
+    if (!creatorProfileId) {
+      alert('No se encontro tu perfil interno en users. Revisa tu registro en la base de datos.');
+      return;
+    }
 
-  const { error } = await sb.from('tasks').insert({
-    titulo: tituloFinal, venture_id: venture||null, prioridad,
-    fecha_limite: fecha||null, estado:'pendiente', creado_por: creatorProfileId,
-    parent_task_id: document.getElementById('task-parent')?.value || null
-  });
-  if (!error) {
+    const { error } = await sb.from('tasks').insert({
+      titulo: tituloFinal, venture_id: venture||null, prioridad,
+      fecha_limite: fecha||null, estado:'pendiente', creado_por: creatorProfileId,
+      asignado_a: asignado || null,
+      parent_task_id: document.getElementById('task-parent')?.value || null
+    });
+    if (error) {
+      alert('No se pudo crear la tarea: ' + error.message);
+      return;
+    }
     await logActivity('creó una nueva tarea');
     closeTaskModal(); await loadTasks(); renderTasksPanel(); renderTareasPage();
-  }
+  });
 }
 
 async function logActivity(accion) {
@@ -8813,7 +8874,7 @@ function openEditTaskModal(taskId) {
 
   const uSel = document.getElementById('edit-task-asignado');
   if (uSel) {
-    const assigneeId = usersData.find(u => {
+    const assigneeId = task.asignado_a || usersData.find(u => {
       const tag = '@' + normalizeText(u.nombre).replace(/\s+/g,'');
       return (task.titulo||'').toLowerCase().includes(tag.toLowerCase());
     })?.id || '';
@@ -8828,7 +8889,9 @@ function openEditTaskModal(taskId) {
       topLevel.map(t => `<option value="${t.id}"${String(t.id)===String(task.parent_task_id||'')?'selected':''}>${escapeHtml(cleanTaskTitle(t.titulo))}</option>`).join('');
   }
 
-  document.getElementById('edit-task-titulo').value   = cleanTaskTitle(task.titulo || '');
+  // El responsable se elige en el selector; el @tag se reconstruye al guardar.
+  document.getElementById('edit-task-titulo').value   = cleanTaskTitle(task.titulo || '')
+    .replace(/(^|\s)@[a-zA-Z0-9_-]+/g, ' ').replace(/\s+/g, ' ').trim();
   document.getElementById('edit-task-prioridad').value = task.prioridad || 'media';
   document.getElementById('edit-task-estado').value    = task.estado || 'pendiente';
   document.getElementById('edit-task-fecha').value     = task.fecha_limite?.slice(0,10) || '';
@@ -8843,8 +8906,9 @@ function closeEditTaskModal(e) {
   }
 }
 
-async function saveEditTaskModal() {
+async function saveEditTaskModal(btn) {
   if (!_editTaskId) return;
+  const taskId    = _editTaskId;
   const titulo    = document.getElementById('edit-task-titulo').value.trim();
   const ventureId = document.getElementById('edit-task-venture').value || null;
   const assigneeId= document.getElementById('edit-task-asignado').value || null;
@@ -8863,24 +8927,24 @@ async function saveEditTaskModal() {
   const payload = {
     titulo: tituloFinal, venture_id: ventureId, prioridad, estado,
     fecha_limite: fecha, parent_task_id: parentId,
+    asignado_a: assigneeId,
     completado_en: estado === 'completado' ? new Date().toISOString() : null
   };
 
-  // Optimistic update en memoria
-  [tasksData, tasksProgressData].forEach(arr => {
-    const t = arr.find(x => String(x.id) === _editTaskId);
-    if (t) Object.assign(t, payload);
-  });
-  renderTasksPanel(); renderTareasPage(); renderVenturesDetail();
-  closeEditTaskModal();
-
-  const { error } = await sb.from('tasks').update(payload).eq('id', _editTaskId);
-  if (error) {
-    alert('Error al guardar: ' + error.message);
-    await loadTasks(); renderTasksPanel(); renderTareasPage(); renderVenturesDetail();
-  } else {
+  await withButtonLoading(btn, async () => {
+    const { data, error } = await sb.from('tasks').update(payload).eq('id', taskId).select('id');
+    if (error || !data?.length) {
+      alert('Error al guardar: ' + (error?.message || 'la tarea no se actualizó'));
+      return;
+    }
+    [tasksData, tasksProgressData].forEach(arr => {
+      const t = arr.find(x => String(x.id) === taskId);
+      if (t) Object.assign(t, payload);
+    });
+    closeEditTaskModal();
+    renderTasksPanel(); renderTareasPage(); renderVenturesDetail();
     logActivity('editó una tarea');
-  }
+  });
 }
 
 async function deleteTaskFromModal() {
@@ -8907,7 +8971,7 @@ function setPage(id) {
   document.getElementById('page-'+id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
-  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',equipo:'Equipo',calendario:'Calendario',horarios:'Horarios','mi-horario':(currentUserRole==='executor'?'Calendario':'Mi Horario')};
+  const pageNames={dashboard:(currentUserRole==='manager'?'Supervisión':'Dashboard'),ventures:'Ventures',tareas:(currentUserRole==='executor'?'Mi trabajo':'Tareas'),notas:'Notas',signals:'Signal Inbox',equipo:'Equipo',calendario:'Calendario',horarios:'Horarios','mi-horario':(currentUserRole==='executor'?'Calendario':'Mi Horario')};
   // Activar nav-btn por data-page (no por índice — se rompe si hay botones ocultos)
   document.querySelectorAll('.nav-btn[data-page="'+id+'"]').forEach(b=>b.classList.add('active'));
   document.querySelectorAll('.sidebar-item[data-page="'+id+'"]').forEach(b=>b.classList.add('active'));
@@ -8921,6 +8985,7 @@ function setPage(id) {
     });
   }
   if (id === 'calendario') loadCalendario();
+  if (id === 'signals') window.SignalInbox?.load();
   if (id === 'horarios') loadHorarios();
   if (id === 'mi-horario') loadMiHorario();
   if (id === 'equipo') {
@@ -8986,5 +9051,6 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
+<script type="module" src="/assets/js/signals.js"></script>
 </body>
 </html>
